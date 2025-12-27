@@ -17,6 +17,7 @@ And so for this tutorial we will be using [Vulkan 1.3](https://docs.vulkan.org/r
 | - | - |
 | [Dynamic rendering](https://www.khronos.org/blog/streamlining-render-passes) | Greatly simplifies render pass setup, one of the most criticized Vulkan areas |
 | [Buffer device address](https://docs.vulkan.org/guide/latest/buffer_device_address.html) | Lets us access buffers via pointers instead of going through descriptors |
+| [Descriptor indexing](https://docs.vulkan.org/refpages/latest/refpages/source/VK_EXT_descriptor_indexing.html) | Simplifies descriptor management, often referred to as "bindless" |
 | [Synchronization2](https://docs.vulkan.org/guide/latest/extensions/VK_KHR_synchronization2.html) | Improves synchronization handling, one of the hardest areas of Vulkan |
 
 tl;dr: Doing Vulkan in 202X can be very different from doing Vulkan in 2016. That's what I hope to show with this.
@@ -190,6 +191,9 @@ Using Vulkan 1.3 as a baseline, we can use the features mentioned [earlier on](#
 ```cpp
 VkPhysicalDeviceVulkan12Features enabledVk12Features{
 	.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+	.descriptorIndexing = true,
+	.descriptorBindingVariableDescriptorCount = true,
+	.runtimeDescriptorArray = true,
 	.bufferDeviceAddress = true
 };
 const VkPhysicalDeviceVulkan13Features enabledVk13Features{
@@ -202,7 +206,10 @@ const VkPhysicalDeviceFeatures enabledVk10Features{
 	.samplerAnisotropy = VK_TRUE
 };
 ```
-Aside from these, we also enable [anisotropic filtering](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceFeatures.html#_members) for textures images for better filtering.
+
+`descriptorBindingVariableDescriptorCount` and `runtimeDescriptorArray` are related to descriptor indexing, the rest of the names match the actual feature.
+
+We also enable [anisotropic filtering](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceFeatures.html#_members) for textures images for better filtering.
 
 > **Note:** Another Vulkan struct member you're going to see often is `pNext`. This can be used to create a linked list of structures that are passed into a function call. The driver then uses the `sType` member of each structure in that list to identify said structure's type.
 
@@ -609,22 +616,23 @@ A call to [vkAllocateCommandBuffers](https://docs.vulkan.org/refpages/latest/ref
 
 ## Loading textures
 
-We are now going to load the texture that'll be applied to our 3D model. In Vulkan, those are images, just like the swapchain or depth image. From a GPU's perspective, images are more complex than buffers, something that's reflected in the verbosity around getting them uploaded to the GPU. 
-
-> **Note:** Some extensions like [VK_EXT_host_image_copy](https://www.khronos.org/blog/copying-images-on-the-host-in-vulkan) or [VK_EXT_descriptor_buffer](https://www.khronos.org/blog/vk-ext-descriptor-buffer) are attempts at simplifying this part of the API. But none of these are part of a core version or widely supported. If VK_EXT_host_image_copy is available on your targets, you could use it to heavily simplify the upload part, as with it that part no longer requires a command buffer.
+We are now going to load the textures used for rendering the 3D models. In Vulkan, those are images, just like the swapchain or depth image. From a GPU's perspective, images are more complex than buffers, something that's reflected in the verbosity around getting them uploaded to the GPU. 
 
 There are lots of image formats, but we'll go with [KTX](https://www.khronos.org/ktx/), a container format by Khronos. Unlike formats such as JPEG or PNG, it stores images in native GPU formats, meaning we can directly upload them without having to decompress or convert. It also supports GPU specific features like mip maps, 3D textures and cubemaps. One tool for creating KTX image files is [PVRTexTool](https://developer.imaginationtech.com/solutions/pvrtextool/).
 
 With the help of that library, Loading such a file from disk is trivial:
 
 ```cpp
-ktxTexture* ktxTexture{ nullptr };
-ktxTexture_CreateFromNamedFile("assets/suzanne.ktx", KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTexture);
+for (auto i = 0; i < textures.size(); i++) {
+	ktxTexture* ktxTexture{ nullptr };
+	std::string filename = "assets/suzanne" + std::to_string(i) + ".ktx";
+	ktxTexture_CreateFromNamedFile("assets/suzanne.ktx", KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT, &ktxTexture);
+	...
 ```
 
-> **Note:** The texture we load uses an 8-bit per channel RGBA format, even though we don't use the alpha channel. You might be tempted to use RGB instead to save memory, but RGB isn't widely supported. If you used such formats in OpenGL the driver often secretly converted them to RGBA. In Vulkan trying to use an unsupported format instead would just fail.
+> **Note:** The textures we load use an 8-bit per channel RGBA format, even though we don't use the alpha channel. You might be tempted to use RGB instead to save memory, but RGB isn't widely supported. If you used such formats in OpenGL the driver often secretly converted them to RGBA. In Vulkan trying to use an unsupported format instead would just fail.
 
-Creating the image (object) is very similar to how we created the [depth attachment](#depth-attachment)
+Creating the image (object) is very similar to how we created the [depth attachment](#depth-attachment):
 
 ```cpp
 VkImageCreateInfo texImgCI{
@@ -639,15 +647,15 @@ VkImageCreateInfo texImgCI{
 	.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 	.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
 };
-VmaAllocationCreateInfo uImageAllocCI{ .usage = VMA_MEMORY_USAGE_AUTO };
-chk(vmaCreateImage(allocator, &texImgCI, &uImageAllocCI, &texture.image, &texture.allocation, nullptr));
+VmaAllocationCreateInfo texImageAllocCI{ .usage = VMA_MEMORY_USAGE_AUTO };
+chk(vmaCreateImage(allocator, &texImgCI, &texImageAllocCI, &textures[i].image, &textures[i].allocation, nullptr));
 ```
 
 We read the format from the texture using `ktxTexture_GetVkFormat`, width and height also come from the texture we just loaded. Our desired `usage` combination means that we want to transfer data loaded from disk to this image (`VK_IMAGE_LAYOUT_UNDEFINED`) and (at a later point) want to sample from it in a shader (`VK_IMAGE_USAGE_SAMPLED_BIT`). We again use `VK_IMAGE_LAYOUT_UNDEFINED` for the initial layout, as that's the only one allowed in this case (`VK_IMAGE_LAYOUT_PREINITIALIZED` e.g. only works with linear tiled images).
 
 Once again `vmaCreateImage` is used to create the image, with `VMA_MEMORY_USAGE_AUTO` making sure we get the most fitting memory type (GPU VRAM).
 
-With the empty image created it's time to upload data. Unlike with a buffer, we can't simply memcpy data to an image. That's because [optimal tiling](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageTiling.html) stores texels in a hardware-specific layout and we have no way to convert to that. Instead we have to create an intermediate buffer that we copy the data to, and then issue a command to the GPU that copies this buffer to the image, doing the conversion in turn.
+With the empty image created it's time to upload data. Unlike buffers, we can't simply memcpy data to an image. That's because [optimal tiling](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageTiling.html) stores texels in a hardware-specific layout and we have no way to convert to that. Instead we have to create an intermediate buffer that we copy the data to, and then issue a command to the GPU that copies this buffer to the image, doing the conversion in turn.
 
 Creating that buffer is very much the same as creating the [uniform buffers](#uniform-buffers) with some minor differences:
 
@@ -657,7 +665,8 @@ VmaAllocation imgSrcAllocation{};
 VkBufferCreateInfo imgSrcBufferCI{
 	.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 	.size = (uint32_t)ktxTexture->dataSize,
-	.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT};
+	.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+};
 VmaAllocationCreateInfo imgSrcAllocCI{
 	.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
 	.usage = VMA_MEMORY_USAGE_AUTO
@@ -708,7 +717,7 @@ VkImageMemoryBarrier2 barrierTexImage{
 	.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT_KHR,
 	.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-	.image = texture.image,
+	.image = textures[i].image,
 	.subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1 }
 };
 VkDependencyInfo barrierTexInfo{
@@ -721,7 +730,7 @@ VkBufferImageCopy copyRegion{
 	.imageSubresource{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .layerCount = 1 },
 	.imageExtent{.width = ktxTexture->baseWidth, .height = ktxTexture->baseHeight, .depth = 1 },
 };
-vkCmdCopyBufferToImage(cbOneTime, imgSrcBuffer, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+vkCmdCopyBufferToImage(cbOneTime, imgSrcBuffer, textures[i].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 VkImageMemoryBarrier2 barrierTexRead{
 	.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
 	.srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -730,7 +739,7 @@ VkImageMemoryBarrier2 barrierTexRead{
 	.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
 	.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 	.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	.image = texture.image,
+	.image = textures[i].image,
 	.subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1 }
 };
 barrierTexInfo.pImageMemoryBarriers = &barrierTexRead;
@@ -742,7 +751,7 @@ It might look a bit overwhelming at first but it's easily explained. Earlier on 
 
 > **Note:** Extensions that would make this easier are [VK_EXT_host_image_copy](https://www.khronos.org/blog/copying-images-on-the-host-in-vulkan), allowing for copying image date directly from the CPU without having to use a command buffer and [VK_KHR_unified_image_layouts](https://www.khronos.org/blog/so-long-image-layouts-simplifying-vulkan-synchronisation), simplifying image layouts. These aren't widely supported yet, but future candidates for making Vulkan easier to use.
 
-Later on we'll sample this texture in our shader. How that texture is sampled (in the shader) is defined by a sampler object:
+Later on we'll sample these textures in our shader. How sampling is done in the shader is defined by a sampler object. We want smooth linear filtering and also enable [anisotropic filter](https://docs.vulkan.org/spec/latest/chapters/textures.html#textures-texel-anisotropic-filtering) to reduce blur and aliasing:
 
 ```cpp
 VkSamplerCreateInfo samplerCI{
@@ -754,41 +763,48 @@ VkSamplerCreateInfo samplerCI{
 	.maxAnisotropy = 8.0f,
 	.maxLod = 1.0f,
 };
-chk(vkCreateSampler(device, &samplerCI, nullptr, &texture.sampler));
+chk(vkCreateSampler(device, &samplerCI, nullptr, &textures[i].sampler));
 ```
 
-We want smooth linear filtering and also enable [anisotropic filter](https://docs.vulkan.org/spec/latest/chapters/textures.html#textures-texel-anisotropic-filtering) to reduce blur and aliasing.
+Now that we have uploaded the texture images, put them into the correct layout and know how to sample them, we need a way for the GPU to access them in the shader. From the GPU's point of view, images are more complicated than buffers as the GPU needs more information on what they look like an how they're accessed. This is where [descriptors](https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html) are required, handles that represent (describe, hence the name) shader resources. 
 
-Now that we have uploaded the texture image's content, have put it into the correct layout and know how to sample it, we need a way for the GPU to access it via a shader. From the GPU's point of view, images are more complicated than buffer and the GPU needs a lot more information on how they're accessed. This is where descriptors are required, handles that represent (describe, hence the name) shader resources. 
+In earlier Vulkan versions we would also have to use them for buffers, but as noted in the [uniform buffers](#uniform-buffers) chapter, buffer device address saves us from doing that. There's no easy to use or widely available equivalent to that for images yet.
 
-In earlier Vulkan versions we would also have to use them for buffers, but as noted in the [uniform buffers](#uniform-buffers) chapter, buffer device address saves us from doing that. But there's no easy to use or widely available equivalent to that for images yet.
+And while descriptor handling is still one of the most verbose parts, using [Descriptor indexing](https://docs.vulkan.org/refpages/latest/refpages/source/VK_EXT_descriptor_indexing.html), simplifies this significantly respectively makes it easier to scale. With that feature we can go for a "bindless" setup, where all textures are put into one large array and indexed in the [shader](#the-shader) rather than having to create and bind descriptor sets for each and every texture. To demonstrate how this works we'll be loading multiple textures. This approach scales up no matter how many textures you use (within the limits of what the GPU supports).
 
 First we define the interface between our application and the shader in the form of a descriptor set layout:
 
 ```cpp
+VkDescriptorBindingFlags descVariableFlag{ VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT };
+VkDescriptorSetLayoutBindingFlagsCreateInfo descBindingFlags{
+	.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
+	.bindingCount = 1,
+	.pBindingFlags = &descVariableFlag
+};
 VkDescriptorSetLayoutBinding descLayoutBindingTex{
 	.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-	.descriptorCount = 1,
+	.descriptorCount = static_cast<uint32_t>(textures.size()),
 	.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
 };
 VkDescriptorSetLayoutCreateInfo descLayoutTexCI{
 	.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+	.pNext = &descBindingFlags,
 	.bindingCount = 1,
 	.pBindings = &descLayoutBindingTex
 };
 chk(vkCreateDescriptorSetLayout(device, &descLayoutTexCI, nullptr, &descriptorSetLayoutTex));
 ```
 
-We want to combine our texture image with a sampler (see below), so we'll define a single descriptor binding for a [`VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorType.html) that's accessible by the fragment shader (`stageFlags`). A call to [vkCreateDescriptorSetLayout](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateDescriptorSetLayout.html). This layout will be used to allocate the descriptor and specify the shader interface at [pipeline creation](#graphics-pipeline).
+As we're only using descriptors for images, we just have a single binding. The [VkDescriptorSetLayoutBindingFlagsCreateInfo](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorSetLayoutBindingFlagsCreateInfo.html) is used to enable a variable number of descriptors in that binding as part of descriptor indexing and is passed via `pNext`. We combine texture images and samplers (see below), so the binding's type needs to be [`VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorType.html). There will be as many descriptors in that layout as we have textures loaded and we only need to access this from  the fragment shader, so we set `stageFlags` to `VK_SHADER_STAGE_FRAGMENT_BIT`. A call to [vkCreateDescriptorSetLayout](https://docs.vulkan.org/refpages/latest/refpages/source/vkCreateDescriptorSetLayout.html) will then create a descriptor set layout with this configuration. We need this to allocate the descriptor and for defining the shader interface at [pipeline creation](#graphics-pipeline).
 
-> **Note:** There might be scenarios where you would want to separate images and descriptors, e.g. if you have a lot of images and don't want to waste memory on having samplers for each or if you want to dynamically use different sampling options. In that case you'd use two pool sizes, one for `VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE `and one for `VK_DESCRIPTOR_TYPE_SAMPLER `.
+> **Note:** There are scenarios where you could separate images and samplers, e.g. if you have a lot of images and don't want to waste memory on having samplers for each or if you want to dynamically use different sampling options. In that case you'd use two pool sizes, one for `VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE `and one for `VK_DESCRIPTOR_TYPE_SAMPLER `.
 
 Similar to command buffers, descriptors are allocated from a descriptor pool:
 
 ```cpp
 VkDescriptorPoolSize poolSize{
 	.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-	.descriptorCount = 1
+	.descriptorCount = static_cast<uint32_t>(textures.size())
 };
 VkDescriptorPoolCreateInfo descPoolCI{
 	.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -799,42 +815,44 @@ VkDescriptorPoolCreateInfo descPoolCI{
 chk(vkCreateDescriptorPool(device, &descPoolCI, nullptr, &descriptorPool));
 ```
 
-The number of descriptor types we want to allocate must be specified here upfront. We use a single texture combined with a sampler (`descriptorCount`), so we request exactly one descriptor of type [`VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorType.html). We also have to specify how many descriptor sets we want to allocate via `maxSets`. That's also one, because we only have a single image and since it's only accessed by the GPU, there is no need to duplicate it per max. frames in flight. If you'd try to allocate more than one descriptor set or more than one combined image sampler descriptor, that allocation would fail.
+The number of descriptor types we want to allocate must be specified here upfront. We need as many descriptors for combined image and samplers as we load textures. We also have to specify how many descriptor sets (**not** descriptors) we want to allocate via `maxSets`. That's one, because we with descriptor indexing, we use an array of combined image and samplers. It's also only ever accessed by the GPU, so there is no need to duplicate it per max. frames in flight. Getting pool size right is important, as allocations beyond the requested counts will fail.
 
-Next we allocate the descriptor set from that pool. While the descriptor set layout defines the interface, the descriptor contains the actual descriptor data. The reason that layouts and sets are split is because you can mix layouts and re-use them for different descriptors sets. So if you wanted to load multiple textures you'd use the same descriptor set layout and generate multiple sets. As we only have one image, we create a single descriptor set for that, based on the layout:
+Next we allocate the descriptor set from that pool. While the descriptor set layout defines the interface, the descriptor contains the actual descriptor data. The reason that layouts and sets are split is because you can mix layouts and re-use them for different descriptors sets. 
 
 ```cpp
+uint32_t variableDescCount{ static_cast<uint32_t>(textures.size()) };
+VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescCountAI{
+	.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT,
+	.descriptorSetCount = 1,
+	.pDescriptorCounts = &variableDescCount
+};
 VkDescriptorSetAllocateInfo texDescSetAlloc{
 	.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+	.pNext = &variableDescCountAI,
 	.descriptorPool = descriptorPool,
 	.descriptorSetCount = 1,
 	.pSetLayouts = &descriptorSetLayoutTex
 };
-chk(vkAllocateDescriptorSets(device, &texDescSetAlloc, &texture.descriptorSet));
+chk(vkAllocateDescriptorSets(device, &texDescSetAlloc, &descriptorSetTex));
 ```
 
-That descriptor set is empty and does not know about the actual descriptors yet, so next we populate it with that information:
+Similar to descriptor set layout creation, we have to pass the descriptor indexing setup to the allocation via  [VkDescriptorSetVariableDescriptorCountAllocateInfo](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorSetVariableDescriptorCountAllocateInfo.html) in `pNext`.
+
+The descriptor set allocated by [vkAllocateDescriptorSets](https://docs.vulkan.org/refpages/latest/refpages/source/vkAllocateDescriptorSets.html) is largely uninitialized and needs to be backed with actual data before we can access in a shader:
 
 ```cpp
-VkDescriptorImageInfo descTexInfo{
-	.sampler = texture.sampler,
-	.imageView = texture.view,
-	.imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL
-};
 VkWriteDescriptorSet writeDescSet{
 	.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-	.dstSet = texture.descriptorSet,
+	.dstSet = descriptorSetTex,
 	.dstBinding = 0,
-	.descriptorCount = 1,
-	.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-	.pImageInfo = &descTexInfo
+	.descriptorCount = static_cast<uint32_t>(textureDescriptors.size()),
+	.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 
+	.pImageInfo = textureDescriptors.data()
 };
 vkUpdateDescriptorSets(device, 1, &writeDescSet, 0, nullptr);
 ```
 
-The [VkDescriptorImageInfo](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorImageInfo.html) structure is used to link the descriptor to our texture image and sampler (combined image sampler). Calling [vkUpdateDescriptorSets](https://docs.vulkan.org/refpages/latest/refpages/source/vkUpdateDescriptorSets.html) will put that information in the first (and in our case only) binding slot of the descriptor set.
-
-> **Note:** When using many images, this can become quite cumbersome. On way to simplify this is by using [Descriptor indexing](https://docs.vulkan.org/samples/latest/samples/extensions/descriptor_indexing/README.html), where you'd create a single descriptor for a large array storing an arbitrary number of images.
+The [VkDescriptorImageInfo](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorImageInfo.html) refers to an array of descriptors for the textures we loaded above combined with samplers in `pImageInfo`. Calling [vkUpdateDescriptorSets](https://docs.vulkan.org/refpages/latest/refpages/source/vkUpdateDescriptorSets.html) will put that information in the first (and in our case only) binding slot of the descriptor set.
 
 ## Loading shaders
 
@@ -900,7 +918,7 @@ struct VSInput {
 	float2 UV;
 };
 
-[[vk::binding(0,0)]] Sampler2D samplerTexture;
+Sampler2D textures[];
 
 struct UBO {
     float4x4 projection;
@@ -913,6 +931,7 @@ struct VSOutput {
 	float4 Pos : SV_POSITION;
     float2 UV;
     float3 Factor;
+    uint32_t InstanceIndex;
 };
 
 [shader("vertex")]
@@ -921,12 +940,13 @@ VSOutput main(VSInput input, uniform UBO *ubo, uint instanceIndex : SV_VulkanIns
 	output.UV = input.UV;
     output.Pos = mul(ubo->projection, mul(ubo->view, mul(ubo->model[instanceIndex], float4(input.Pos.xyz, 1.0))));
     output.Factor = (ubo.selected == instanceIndex ? 3.0f : 1.0f);
+    output.InstanceIndex = instanceIndex;
     return output;
 }
 
 [shader("fragment")]
 float4 main(VSOutput input) {
-    return float4(samplerTexture.Sample(input.UV).rgb * input.Factor, 1.0);
+    return float4(textures[input.InstanceIndex].Sample(input.UV).rgb * input.Factor, 1.0);
 }
 ```
 
@@ -936,7 +956,7 @@ It contains two shading stages and starts with defining structures that are used
 
 First is the vertex shader, marked by the `[shader("vertex")]` attribute. It takes in vertices defined as per `VSInput`, matching the vertex layout from the [graphics pipeline](#graphics-pipeline). The vertex shader will be invoked for every vertex [drawn](#record-command-buffers). As we use buffer device address, we pass and access the UBO as a pointer. As we draw multiple instances of our 3D model and want to use different matrices for every instance, we use the built-in `SV_VulkanInstanceID` system value to index into the model matrices. We also want to highlight the selected model, so if the current instance matches that selection, we pass a different color factor to the fragment shader.
 
-Second is the fragment shader, marked by the `[shader("fragment")]` attribute. This uses values passed from the vertex shader to read from the [texture](#loading-textures) and outputs that to the color attachment.
+Second is the fragment shader, marked by the `[shader("fragment")]` attribute. This uses values passed from the vertex shader to sample from the [texture](#loading-textures) and outputs that to the color attachment. To demonstrate descriptor indexing we also index into the array of texture descriptors (`Sampler2D textures[]`) using the instance index passed by the vertex shader.
 
 ## Graphics pipeline
 
@@ -1176,7 +1196,7 @@ This works because the [uniform buffers](#uniform-buffers) are stored in a memor
 
 ### Record command buffers
 
-Now we can finally start recoding actual GPU work to get something displayed to the screen. A lot of the things we need for that have been discussed earlier on, so even though this will be a lot of code, it should be easy to follow. As mentioned in [command buffers](#command-buffers), commands are not directly issued to the GPU in Vulkan but rather recorded to command buffers. That's exactly what we are not going to do, record the commands for a single render frame.
+Now we can finally start recoding actual GPU work to get something displayed to the screen.PA lot of the things we need for that have been discussed earlier on, so even though this will be a lot of code, it should be easy to follow. As mentioned in [command buffers](#command-buffers), commands are not directly issued to the GPU in Vulkan but rather recorded to command buffers. That's exactly what we are not going to do, record the commands for a single render frame.
 
 You might be tempted to pre-record command buffers and reuse them until something changes that would require re-recording. This makes things unnecessary complicated though, as recording command buffers is pretty fast and can be done in parallel on the CPU.
 
@@ -1238,7 +1258,7 @@ VkDependencyInfo barrierDependencyInfo{
 vkCmdPipelineBarrier2(cb, &barrierDependencyInfo);
 ```
 
-Not only do [image memory barriers](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-dependencies) transition layouts, they also make sure that this happens at the right [pipeline stage](https://docs.vulkan.org/spec/latest/chapters/pipelines.html#pipelines-block-diagram), enforcing ordering inside a command buffer. Similar to other synchronization primitives we used, these are necessary to make sure the GPU e.g. doesn't start writing to an image in one pipeline stage while a previous pipeline stage is still reading from it. They also make writes visible to following stages. The `srcStageMask` is the pipeline stage(s) to wait on, `srcAccessMask` and defines writes to be made availble. `dstStageMask` and `dstAccessMask` define where and what writes to be made visible.
+Not only do [image memory barriers](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-dependencies) transition layouts, they also make sure that this happens at the right [pipeline stage](https://docs.vulkan.org/spec/latest/chapters/pipelines.html#pipelines-block-diagram), enforcing ordering inside a command buffer. Similar to other synchronization primitives we used, these are necessary to make sure the GPU e.g. doesn't start writing to an image in one pipeline stage while a previous pipeline stage is still reading from it. They also make writes visible to following stages. The `srcStageMask` is the pipeline stage(s) to wait on, `srcAccessMask` and defines writes to be made available. `dstStageMask` and `dstAccessMask` define where and what writes to be made visible.
 
 > **Note:** Available and visible might sound like the same thing, but they aren't. That's due to how CPU/GPUs work and how they interact with caches. Available means data is ready for future memory operations (e.g. cache flushes). Visible means that data is actually visible to reads from the consuming stages.
 
@@ -1269,7 +1289,7 @@ VkRenderingAttachmentInfo depthAttachmentInfo{
 };
 ```
 
-We set up one [VkRenderingAttachmentInfo](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderingAttachmentInfo.html) for the swapchain image used as the color attachment and the depth image used as the depth attachment. Both will be cleared to their respective `clearValue` at the start of a render pass with `loadOp` set to `VK_ATTACHMENT_LOAD_OP_CLEAR`. `storeOp` for the color attachment is configured to keep it's contents, as we still need them to be presented to the screen. We don't need the depth information once we're done rendering, so we literall don't care what happens with it's contents after the render pass. Layouts for both must match what we transitioned them earlier on.
+We set up one [VkRenderingAttachmentInfo](https://docs.vulkan.org/refpages/latest/refpages/source/VkRenderingAttachmentInfo.html) for the swapchain image used as the color attachment and the depth image used as the depth attachment. Both will be cleared to their respective `clearValue` at the start of a render pass with `loadOp` set to `VK_ATTACHMENT_LOAD_OP_CLEAR`. `storeOp` for the color attachment is configured to keep it's contents, as we still need them to be presented to the screen. We don't need the depth information once we're done rendering, so we literally don't care what happens with it's contents after the render pass. Layouts for both must match what we transitioned them earlier on.
 
 Calling [vkCmdBeginRendering](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBeginRendering.html) will then start our dynamic render pass instance with above attachment configuration:
 
@@ -1296,12 +1316,12 @@ VkRect2D scissor{ .extent{ .width = window.getSize().x, .height = window.getSize
 vkCmdSetScissor(cb, 0, 1, &scissor);
 ```
 
-Next up is binding the resources involved in rendering our 3D object. The [graphics pipeline](#graphics-pipeline), that also includes our vertex and fragment shaders, as well as the descriptor set for the [texture image](#loading-textures) and the vertex and index buffers of our [3D mesh](#loading-meshes):
+Next up is binding the resources involved in rendering our 3D object. The [graphics pipeline](#graphics-pipeline), that also includes our vertex and fragment shaders, as well as the descriptor set for the array of our [texture images](#loading-textures) and the vertex and index buffers of our [3D mesh](#loading-meshes):
 
 ```cpp
 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 VkDeviceSize vOffset{ 0 };
-vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &texture.descriptorSet, 0, nullptr);
+kCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSetTex, 0, nullptr);
 vkCmdBindVertexBuffers(cb, 0, 1, &vBuffer, &vOffset);
 vkCmdBindIndexBuffer(cb, vBuffer, vBufSize, VK_INDEX_TYPE_UINT16);
 ```
