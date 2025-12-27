@@ -1533,6 +1533,6 @@ Ordering of commands only matters for the VMA allocator, device and instance. Th
 
 By now, you should have a basic understanding of how to create a Vulkan application that does rasterization by leveraging recent API versions and features. Vulkan is still pretty verbose, something inherent to an explicit low-level API. But things have become easier. Maybe not in terms of writing less code, but more in regards to using and understanding the API.
 
-Looking at the broader picture Vulkan now also covers more use-cases than ever. In addition to rasterization and compute, it now also supports hardware accelerated raytracing and functions geared towards artificial intelligence.
+Looking at the broader picture Vulkan also covers more use-cases than ever. In addition to rasterization and compute, it also offers functionality for hardware accelerated raytracing, video encoding and decoding, machine learning and safety critical areas.
 
 If you're looking for further resources, check the [Vulkan Docs Site](https://docs.vulkan.org/). It combines multiple Vulkan documentation resources like the spec, a tutorial and samples into one convenient site.
