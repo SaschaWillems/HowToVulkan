@@ -49,7 +49,7 @@ Vulkan is a deliberately explicit API, writing code for it can be very verbose. 
 
 ## Programming language
 
-We'll use C++ 20, mostly for it's designated initializers. They help with Vulkan's verbosity and improve code readability. Other than that we won't be using any modern language features and also work with the C Vulkan headers instead of the [C++](https://github.com/KhronosGroup/Vulkan-Hpp) ones. Aside from personal preferences this is done to make this tutorial as approachable as possible, even for people that don't work with C++.
+We'll use C++ 20, mostly for its designated initializers. They help with Vulkan's verbosity and improve code readability. Other than that we won't be using any modern language features and also work with the C Vulkan headers instead of the [C++](https://github.com/KhronosGroup/Vulkan-Hpp) ones. Aside from personal preferences this is done to make this tutorial as approachable as possible, even for people that don't work with C++.
 
 ## Shading language
 
@@ -1321,7 +1321,7 @@ Next up is binding the resources involved in rendering our 3D object. The [graph
 ```cpp
 vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 VkDeviceSize vOffset{ 0 };
-kCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSetTex, 0, nullptr);
+vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSetTex, 0, nullptr);
 vkCmdBindVertexBuffers(cb, 0, 1, &vBuffer, &vOffset);
 vkCmdBindIndexBuffer(cb, vBuffer, vBufSize, VK_INDEX_TYPE_UINT16);
 ```
@@ -1510,8 +1510,8 @@ if (const auto* resized = event->getIf<sf::Event::Resized>()) {
 	depthImageCI.extent = { .width = static_cast<uint32_t>(window.getSize().x), .height = static_cast<uint32_t>(window.getSize().y), .depth = 1 };
 	VmaAllocationCreateInfo allocCI{
 		.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
-		.usage = VMA_MEMORY_USAGE_AUTO 
-	;
+		.usage = VMA_MEMORY_USAGE_AUTO
+	};
 	chk(vmaCreateImage(allocator, &depthImageCI, &allocCI, &depthImage, &depthImageAllocation, nullptr));
 	VkImageViewCreateInfo viewCI{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
