@@ -1137,9 +1137,9 @@ while (window.isOpen()) {
 	// Wait on fence
 	// Acquire next image
 	// Update shader data
-	// Build command buffer
-	// Submit to graphics queue
-	// Event polling
+	// Record command buffers
+	// Submit command buffers
+	// Poll events
 }
 ```
 
@@ -1431,7 +1431,7 @@ chk(vkQueuePresentKHR(queue, &presentInfo));
 
 Calling [vkQueuePresentKHR](https://docs.vulkan.org/refpages/latest/refpages/source/vkQueuePresentKHR.html) will enqueue the image for presentation after waiting for the render semaphore. That guarantees the image won't be presented until our rendering commands have finished. 
 
-### Event polling
+### Poll events
 
 After all the visual things we now work through the event queue (of the operating system). This is done in an additional loop (inside the render loop) where we call `pollEvent` until all events have been popped from the queue. We only handle event types we're interested in:
 

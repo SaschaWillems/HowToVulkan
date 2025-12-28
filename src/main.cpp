@@ -3,6 +3,7 @@
  */
 
 #include <SFML/Graphics.hpp>
+#include <vulkan/vulkan.h>
 #define VOLK_IMPLEMENTATION
 #include <volk/volk.h>
 #include <vector>
@@ -17,8 +18,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include "slang/include/slang.h"
-#include "slang/include/slang-com-ptr.h"
+#include "slang/slang.h"
+#include "slang/slang-com-ptr.h"
 #include <ktx.h>
 #include <ktxvulkan.h>
 #define TINYOBJLOADER_IMPLEMENTATION
