@@ -618,7 +618,7 @@ A call to [vkAllocateCommandBuffers](https://docs.vulkan.org/refpages/latest/ref
 
 We are now going to load the textures used for rendering the 3D models. In Vulkan, those are images, just like the swapchain or depth image. From a GPU's perspective, images are more complex than buffers, something that's reflected in the verbosity around getting them uploaded to the GPU. 
 
-There are lots of image formats, but we'll go with [KTX](https://www.khronos.org/ktx/), a container format by Khronos. Unlike formats such as JPEG or PNG, it stores images in native GPU formats, meaning we can directly upload them without having to decompress or convert. It also supports GPU specific features like mip maps, 3D textures and cubemaps. One tool for creating KTX image files is [PVRTexTool](https://developer.imaginationtech.com/solutions/pvrtextool/).
+There are lots of image formats, but we'll go with [KTX](https://www.khronos.org/ktx/), a container format by Khronos. Unlike formats such as JPEG or PNG, it stores images in native GPU formats, meaning we can directly upload them without having to decompress or convert. It also supports GPU specific features like storing mip maps, 3D textures and cubemaps. One tool for creating KTX image files is [PVRTexTool](https://developer.imaginationtech.com/solutions/pvrtextool/).
 
 With the help of that library, Loading such a file from disk is trivial:
 
@@ -640,7 +640,7 @@ VkImageCreateInfo texImgCI{
 	.imageType = VK_IMAGE_TYPE_2D,
 	.format = ktxTexture_GetVkFormat(ktxTexture),
 	.extent = {.width = ktxTexture->baseWidth, .height = ktxTexture->baseWidth, .depth = 1 },
-	.mipLevels = 1,
+	.mipLevels = ktxTexture->numLevels,
 	.arrayLayers = 1,
 	.samples = VK_SAMPLE_COUNT_1_BIT,
 	.tiling = VK_IMAGE_TILING_OPTIMAL,
@@ -651,9 +651,20 @@ VmaAllocationCreateInfo texImageAllocCI{ .usage = VMA_MEMORY_USAGE_AUTO };
 chk(vmaCreateImage(allocator, &texImgCI, &texImageAllocCI, &textures[i].image, &textures[i].allocation, nullptr));
 ```
 
-We read the format from the texture using `ktxTexture_GetVkFormat`, width and height also come from the texture we just loaded. Our desired `usage` combination means that we want to transfer data loaded from disk to this image (`VK_IMAGE_LAYOUT_UNDEFINED`) and (at a later point) want to sample from it in a shader (`VK_IMAGE_USAGE_SAMPLED_BIT`). We again use `VK_IMAGE_LAYOUT_UNDEFINED` for the initial layout, as that's the only one allowed in this case (`VK_IMAGE_LAYOUT_PREINITIALIZED` e.g. only works with linear tiled images).
+The format is read from the texture using `ktxTexture_GetVkFormat`, width, height and the number of [mip levels](https://docs.vulkan.org/spec/latest/chapters/textures.html#textures-level-of-detail-operation) also come from that. Our desired `usage` combination means that we want to transfer data loaded from disk to this image (`VK_IMAGE_LAYOUT_UNDEFINED`) and (at a later point) want to sample from it in a shader (`VK_IMAGE_USAGE_SAMPLED_BIT`). We again use `VK_IMAGE_LAYOUT_UNDEFINED` for the initial layout, as that's the only one allowed in this case (`VK_IMAGE_LAYOUT_PREINITIALIZED` e.g. only works with linear tiled images). Once again `vmaCreateImage` is used to create the image, with `VMA_MEMORY_USAGE_AUTO` making sure we get the most fitting memory type (GPU VRAM).
 
-Once again `vmaCreateImage` is used to create the image, with `VMA_MEMORY_USAGE_AUTO` making sure we get the most fitting memory type (GPU VRAM).
+We also create a view through which the image (texture) will be accessed. In our case we want to access the whole image, including all mip levels:
+
+```cpp
+VkImageViewCreateInfo texVewCI{
+	.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+	.image = textures[i].image,
+	.viewType = VK_IMAGE_VIEW_TYPE_2D,
+	.format = texImgCI.format,
+	.subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = ktxTexture->numLevels, .layerCount = 1 }
+};
+chk(vkCreateImageView(device, &texVewCI, nullptr, &textures[i].view));
+```
 
 With the empty image created it's time to upload data. Unlike buffers, we can't simply memcpy data to an image. That's because [optimal tiling](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageTiling.html) stores texels in a hardware-specific layout and we have no way to convert to that. Instead we have to create an intermediate buffer that we copy the data to, and then issue a command to the GPU that copies this buffer to the image, doing the conversion in turn.
 
@@ -684,7 +695,7 @@ vmaMapMemory(allocator, imgSrcAllocation, &imgSrcBufferPtr);
 memcpy(imgSrcBufferPtr, ktxTexture->pData, ktxTexture->dataSize);
 ```
 
-Next we need to copy the image data from that buffer to the optimal tiled image on the GPU. For that we first create a single command buffer to record the image related commands to and a fence that's used to wait for the command buffer to finish execution:
+Next we need to copy the image data from that buffer to the optimal tiled image on the GPU. For that we have to create a command buffer. We'll get into the detail on how they work [later on](#record-command-buffers). We also create a fence that's used to wait for the command buffer to finish execution:
 
 ```cpp
 VkFenceCreateInfo fenceOneTimeCI{
@@ -701,7 +712,7 @@ VkCommandBufferAllocateInfo cbOneTimeAI{
 chk(vkAllocateCommandBuffers(device, &cbOneTimeAI, &cbOneTime));
 ```
 
-Next we record the actual command buffer to get the image data to it's destination in the right shape to be used in our [shader](#the-shader). We'll get into the detail on recording command buffers [later on](#record-command-buffers):
+We can then start record the commands required to get image data to it's destination:
 
 ```cpp
 VkCommandBufferBeginInfo cbOneTimeBI{
@@ -718,7 +729,7 @@ VkImageMemoryBarrier2 barrierTexImage{
 	.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 	.image = textures[i].image,
-	.subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1 }
+	.subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = ktxTexture->numLevels, .layerCount = 1 }
 };
 VkDependencyInfo barrierTexInfo{
 	.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
@@ -726,11 +737,17 @@ VkDependencyInfo barrierTexInfo{
 	.pImageMemoryBarriers = &barrierTexImage
 };
 vkCmdPipelineBarrier2(cbOneTime, &barrierTexInfo);
-VkBufferImageCopy copyRegion{
-	.imageSubresource{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .layerCount = 1 },
-	.imageExtent{.width = ktxTexture->baseWidth, .height = ktxTexture->baseHeight, .depth = 1 },
-};
-vkCmdCopyBufferToImage(cbOneTime, imgSrcBuffer, textures[i].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+std::vector<VkBufferImageCopy> copyRegions{};
+for (auto i = 0; i < ktxTexture->numLevels; i++) {
+	ktx_size_t mipOffset{0};
+	KTX_error_code ret = ktxTexture_GetImageOffset(ktxTexture, i, 0, 0, &mipOffset);
+	copyRegions.push_back({
+		.bufferOffset = mipOffset,
+		.imageSubresource{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = (uint32_t)i, .layerCount = 1},
+		.imageExtent{.width = ktxTexture->baseWidth >> i, .height = ktxTexture->baseHeight >> i, .depth = 1 },
+	});
+}
+vkCmdCopyBufferToImage(cbOneTime, imgSrcBuffer, textures[i].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, static_cast<uint32_t>(copyRegions.size()), copyRegions.data());
 VkImageMemoryBarrier2 barrierTexRead{
 	.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
 	.srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -740,18 +757,18 @@ VkImageMemoryBarrier2 barrierTexRead{
 	.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 	.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	.image = textures[i].image,
-	.subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1 }
+	.subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = ktxTexture->numLevels, .layerCount = 1 }
 };
 barrierTexInfo.pImageMemoryBarriers = &barrierTexRead;
 vkCmdPipelineBarrier2(cbOneTime, &barrierTexInfo);
 vkEndCommandBuffer(cbOneTime);
 ```
 
-It might look a bit overwhelming at first but it's easily explained. Earlier on we learned about optimal tiled images, where texels are stored in a hardware-specific layout for optimal access by the GPU. That [layout](https://docs.vulkan.org/spec/latest/chapters/resources.html#resources-image-layouts) also defines what operations are possible with an image. That's why we need to change said layout depending on what we want to do next with our image. That's done via a pipeline barrier issued by [vkCmdPipelineBarrier2](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdPipelineBarrier2.html). The first one transitions the texture image from the initial undefined layout to a layout that allows us to transfer data to it (`VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL`), we then copy over the data from our temporary buffer to the image using [vkCmdCopyBufferToImage](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdCopyBufferToImage.html) and then transition the image back from transfer destination to a layout we can read from in our shader (`VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`).
+It might look a bit overwhelming at first but it's easily explained. Earlier on we learned about optimal tiled images, where texels are stored in a hardware-specific layout for optimal access by the GPU. That [layout](https://docs.vulkan.org/spec/latest/chapters/resources.html#resources-image-layouts) also defines what operations are possible with an image. That's why we need to change said layout depending on what we want to do next with our image. That's done via a pipeline barrier issued by [vkCmdPipelineBarrier2](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdPipelineBarrier2.html). The first one transitions  all mip levels of texture image from the initial undefined layout to a layout that allows us to transfer data to it (`VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL`). We then copy over all the mip levels from our temporary buffer to the image using [vkCmdCopyBufferToImage](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdCopyBufferToImage.html). Finally we transition the mip levels from transfer destination to a layout we can read from in our shader (`VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`).
 
 > **Note:** Extensions that would make this easier are [VK_EXT_host_image_copy](https://www.khronos.org/blog/copying-images-on-the-host-in-vulkan), allowing for copying image date directly from the CPU without having to use a command buffer and [VK_KHR_unified_image_layouts](https://www.khronos.org/blog/so-long-image-layouts-simplifying-vulkan-synchronisation), simplifying image layouts. These aren't widely supported yet, but future candidates for making Vulkan easier to use.
 
-Later on we'll sample these textures in our shader. How sampling is done in the shader is defined by a sampler object. We want smooth linear filtering and also enable [anisotropic filter](https://docs.vulkan.org/spec/latest/chapters/textures.html#textures-texel-anisotropic-filtering) to reduce blur and aliasing:
+Later on we'll sample these textures in our shader. How sampling is done in the shader is defined by a sampler object. We want smooth linear filtering, so we enable [anisotropic filter](https://docs.vulkan.org/spec/latest/chapters/textures.html#textures-texel-anisotropic-filtering) to reduce blur and aliasing. We also set the max. LOD do use all mip levels:
 
 ```cpp
 VkSamplerCreateInfo samplerCI{
@@ -761,7 +778,7 @@ VkSamplerCreateInfo samplerCI{
 	.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
 	.anisotropyEnable = VK_TRUE,
 	.maxAnisotropy = 8.0f,
-	.maxLod = 1.0f,
+	.maxLod = (float)ktxTexture->numLevels,
 };
 chk(vkCreateSampler(device, &samplerCI, nullptr, &textures[i].sampler));
 ```
