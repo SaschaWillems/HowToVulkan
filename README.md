@@ -783,6 +783,13 @@ VkSamplerCreateInfo samplerCI{
 chk(vkCreateSampler(device, &samplerCI, nullptr, &textures[i].sampler));
 ```
 
+At last we clean up and store descriptor related information for that texture to be used later:
+
+```cpp
+ktxTexture_Destroy(ktxTexture);
+textureDescriptors.push_back({ .sampler = textures[i].sampler, .imageView = textures[i].view, .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL });
+```
+
 Now that we have uploaded the texture images, put them into the correct layout and know how to sample them, we need a way for the GPU to access them in the shader. From the GPU's point of view, images are more complicated than buffers as the GPU needs more information on what they look like an how they're accessed. This is where [descriptors](https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html) are required, handles that represent (describe, hence the name) shader resources. 
 
 In earlier Vulkan versions we would also have to use them for buffers, but as noted in the [uniform buffers](#uniform-buffers) chapter, buffer device address saves us from doing that. There's no easy to use or widely available equivalent to that for images yet.

@@ -327,7 +327,6 @@ int main()
 		vkDestroyFence(device, fenceOneTime, nullptr);
 		vmaUnmapMemory(allocator, imgSrcAllocation);
 		vmaDestroyBuffer(allocator, imgSrcBuffer, imgSrcAllocation);
-		ktxTexture_Destroy(ktxTexture);
 		// Sampler
 		VkSamplerCreateInfo samplerCI{
 			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -339,6 +338,7 @@ int main()
 			.maxLod = (float)ktxTexture->numLevels,
 		};
 		chk(vkCreateSampler(device, &samplerCI, nullptr, &textures[i].sampler));
+		ktxTexture_Destroy(ktxTexture);
 		textureDescriptors.push_back({ .sampler = textures[i].sampler, .imageView = textures[i].view, .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL });
 	}
 	// Descriptor (indexing)
