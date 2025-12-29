@@ -9,7 +9,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 [This repository](https://github.com/SaschaWillems/HowToVulkan) and the accompanying tutorial demonstrate how to write a "modern" Vulkan application in 202X. The goal is to use as little code as possible for displaying something that's more than just a basic colored triangle. 
 
-Vulkan has been released almost 10 years ago, and a lot has changed. Version 1.0 had to make many concessions to support a broad range of GPUs across desktop and mobile. Some of the initial concepts like render passes turned out to be not so optimal, and have been replaced by alternatives. Not only did the API mature, but so did the ecosystem giving us e.g. new options for writing shaders in languages different than GLSL.
+Vulkan was released almost 10 years ago, and a lot has changed. Version 1.0 had to make many concessions to support a broad range of GPUs across desktop and mobile. Some of the initial concepts like render passes turned out to be not so optimal, and have been replaced by alternatives. Not only did the API mature, but so did the ecosystem giving us e.g. new options for writing shaders in languages different than GLSL.
 
 And so for this tutorial we will be using [Vulkan 1.3](https://docs.vulkan.org/refpages/latest/refpages/source/VK_VERSION_1_3.html) as a baseline. This gives us access to several features that make Vulkan easier to use while still supporting a wide range of GPUs. The ones we will be using are:
 
@@ -81,7 +81,7 @@ Validation layers can be enabled in code, but the easier option is to enable the
 
 ## Source
 
-Now that everything is setup we can start digging into the code and all the parts required to display something onto the screen with Vulkan. The following chapters will walk you through the [main source file](https://github.com/SaschaWillems/HowToVulkan/blob/main/src/main.cpp) from top to bottom.
+Now that everything is properly set up we can start digging into the code. The following chapters will walk you through the [main source file](https://github.com/SaschaWillems/HowToVulkan/blob/main/src/main.cpp) from top to bottom. Some of the less interesting boilerplate like variable declaration are omitted is omitted from this document.
 
 ## Instance setup
 
@@ -343,7 +343,7 @@ VkImageCreateInfo depthImageCI{
 	.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 };
 ```	
-> **Note:** We use a fixed depth format (`VK_FORMAT_D24_UNORM_S8_UINT`). This is a [mandatory format](https://docs.vulkan.org/spec/latest/chapters/formats.html#features-required-format-support), meaning it's supported in every Vulkan implementation.
+> **Note:** We use a fixed depth format (`VK_FORMAT_D24_UNORM_S8_UINT`). This is a [mandatory format](https://docs.vulkan.org/spec/latest/chapters/formats.html#features-required-format-support), meaning it's supported on every GPU supporting Vulkan.
 
 The image is 2D and uses a format with support for depth. We don't need multiple mip levels or Layers. Using optimal tiling with [`VK_IMAGE_TILING_OPTIMAL`](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageTiling.html) makes sure the image is stored in a format best suited for the GPU. We also need to state our desired usage cases for the image, which is [`VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageUsageFlagBits.html) as we'll use it as the depth attachment for our render output (more on that later). The initial layout defines the image's content, which we don't have to care about, so we set that to [`VK_IMAGE_LAYOUT_UNDEFINED`](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageLayout.html).
 
@@ -426,7 +426,7 @@ for (auto& index : shapes[0].mesh.indices) {
 
 > **Note:** The value of the position's y-axis and the texture coordinate's v-axis are flipped to accommodate for Vulkan's coordinate system. Otherwise the model and the texture image would appear upside down.
 
-With the data stored in an interleaved way we can now upload the data to GPU. In theory we could just keep this in a buffer in CPU's RAM, but that would be a lot slower to access by the GPU than storing it in the GPU's VRAM For that we need to create a buffer that's going to hold the vertex data to be accessed by the GPU:
+With the data stored in an interleaved way we can now upload it to the GPU. For that we need to create a buffer that's going to hold the vertex and index data:
 
 ```cpp
 VkDeviceSize vBufSize{ sizeof(Vertex) * vertices.size() };
@@ -438,9 +438,9 @@ VkBufferCreateInfo bufferCI{
 };
 ```
 
-Instead of having separate buffers for vertices and indices, we'll put both into the same buffer. That explains why the `size` of the buffer is calculated from the size of both vertices and index vectors. The buffer [`usage`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferUsageFlagBits.html) bit mask combination of `VK_BUFFER_USAGE_VERTEX_BUFFER_BIT` and `VK_BUFFER_USAGE_INDEX_BUFFER_BIT` signals that intended use case to the driver.
+Instead of having separate buffers for vertices and indices, we'll put both into the same buffer. Hence why the `size` of the buffer is calculated from the size of both vertices and index vectors. The buffer [`usage`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferUsageFlagBits.html) bit mask combination of `VK_BUFFER_USAGE_VERTEX_BUFFER_BIT` and `VK_BUFFER_USAGE_INDEX_BUFFER_BIT` signals that intended use case to the driver.
 
-Similar to creating images earlier on we use VMA to allocate the buffer for storing vertex and index data.
+Similar to creating images earlier on we use VMA to allocate the buffer for storing vertex and index data:
 
 ```cpp
 VmaAllocationCreateInfo bufferAllocCI{
@@ -450,7 +450,7 @@ VmaAllocationCreateInfo bufferAllocCI{
 chk(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &vBuffer, &vBufferAllocation, nullptr));
 ```
 
-We again use `VMA_MEMORY_USAGE_AUTO` to have VMA select the correct usage flags for the buffer. The specific `flags` combination of `VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT` and `VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT` used here make sure we get a memory type that's located on the device (in VRAM) and accessible by the host. Such memory types initially were only available on systems with a unified memory architecture like mobiles or computers with an integrated GPU. But thanks to [(Re)BAR/SAM](https://en.wikipedia.org/wiki/PCI_configuration_space#Resizable_BAR) even dedicated GPUs can now map at least some of their VRAM into host space and make it accessible via the CPU.
+We again use `VMA_MEMORY_USAGE_AUTO` to have VMA select the correct usage flags for the buffer. The specific `flags` combination of `VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT` and `VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT` used here make sure we get a memory type that's located on the GPU (in VRAM) and accessible by the host. While it's possible to keep vertices and indices in CPU memory, accessing that by the GPU will be a lot slower. Such memory types initially were only available on systems with a unified memory architecture like mobiles or computers with an integrated GPU. But thanks to [(Re)BAR/SAM](https://en.wikipedia.org/wiki/PCI_configuration_space#Resizable_BAR) even dedicated GPUs can now map at least some of their VRAM into host space and make it accessible via the CPU.
 
 > **Note:** Without this we'd have to create a so-called "staging" buffer on the host, copy data to that buffer and then submit a buffer copy from staging to the GPU side buffer using a command buffer. That would require a lot more code.
 
@@ -651,7 +651,7 @@ VmaAllocationCreateInfo texImageAllocCI{ .usage = VMA_MEMORY_USAGE_AUTO };
 chk(vmaCreateImage(allocator, &texImgCI, &texImageAllocCI, &textures[i].image, &textures[i].allocation, nullptr));
 ```
 
-The format is read from the texture using `ktxTexture_GetVkFormat`, width, height and the number of [mip levels](https://docs.vulkan.org/spec/latest/chapters/textures.html#textures-level-of-detail-operation) also come from that. Our desired `usage` combination means that we want to transfer data loaded from disk to this image (`VK_IMAGE_LAYOUT_UNDEFINED`) and (at a later point) want to sample from it in a shader (`VK_IMAGE_USAGE_SAMPLED_BIT`). We again use `VK_IMAGE_LAYOUT_UNDEFINED` for the initial layout, as that's the only one allowed in this case (`VK_IMAGE_LAYOUT_PREINITIALIZED` e.g. only works with linear tiled images). Once again `vmaCreateImage` is used to create the image, with `VMA_MEMORY_USAGE_AUTO` making sure we get the most fitting memory type (GPU VRAM).
+The format is read from the texture using `ktxTexture_GetVkFormat`, width, height and the number of [mip levels](https://docs.vulkan.org/spec/latest/chapters/textures.html#textures-level-of-detail-operation) also come from that. Our desired `usage` combination means that we want to transfer data loaded from disk to this image (`VK_IMAGE_USAGE_TRANSFER_DST_BIT`) and (at a later point) want to sample from it in a shader (`VK_IMAGE_USAGE_SAMPLED_BIT`). We again use `VK_IMAGE_LAYOUT_UNDEFINED` for the initial layout, as that's the only one allowed in this case (`VK_IMAGE_LAYOUT_PREINITIALIZED` e.g. only works with linear tiled images). Once again `vmaCreateImage` is used to create the image, with `VMA_MEMORY_USAGE_AUTO` making sure we get the most fitting memory type (GPU VRAM).
 
 We also create a view through which the image (texture) will be accessed. In our case we want to access the whole image, including all mip levels:
 
@@ -764,7 +764,7 @@ vkCmdPipelineBarrier2(cbOneTime, &barrierTexInfo);
 vkEndCommandBuffer(cbOneTime);
 ```
 
-It might look a bit overwhelming at first but it's easily explained. Earlier on we learned about optimal tiled images, where texels are stored in a hardware-specific layout for optimal access by the GPU. That [layout](https://docs.vulkan.org/spec/latest/chapters/resources.html#resources-image-layouts) also defines what operations are possible with an image. That's why we need to change said layout depending on what we want to do next with our image. That's done via a pipeline barrier issued by [vkCmdPipelineBarrier2](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdPipelineBarrier2.html). The first one transitions  all mip levels of texture image from the initial undefined layout to a layout that allows us to transfer data to it (`VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL`). We then copy over all the mip levels from our temporary buffer to the image using [vkCmdCopyBufferToImage](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdCopyBufferToImage.html). Finally we transition the mip levels from transfer destination to a layout we can read from in our shader (`VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`).
+It might look a bit overwhelming at first but it's easily explained. Earlier on we learned about optimal tiled images, where texels are stored in a hardware-specific layout for optimal access by the GPU. That [layout](https://docs.vulkan.org/spec/latest/chapters/resources.html#resources-image-layouts) also defines what operations are possible with an image. That's why we need to change said layout depending on what we want to do next with our image. That's done via a pipeline barrier issued by [vkCmdPipelineBarrier2](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdPipelineBarrier2.html). The first one transitions all mip levels of the texture image from the initial undefined layout to a layout that allows us to transfer data to it (`VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL`). We then copy over all the mip levels from our temporary buffer to the image using [vkCmdCopyBufferToImage](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdCopyBufferToImage.html). Finally we transition the mip levels from transfer destination to a layout we can read from in our shader (`VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL`).
 
 > **Note:** Extensions that would make this easier are [VK_EXT_host_image_copy](https://www.khronos.org/blog/copying-images-on-the-host-in-vulkan), allowing for copying image date directly from the CPU without having to use a command buffer and [VK_KHR_unified_image_layouts](https://www.khronos.org/blog/so-long-image-layouts-simplifying-vulkan-synchronisation), simplifying image layouts. These aren't widely supported yet, but future candidates for making Vulkan easier to use.
 
