@@ -69,7 +69,7 @@ While it's not required for developing Vulkan applications, the [LunarG Vulkan S
 
 Our build system will be [CMake](https://cmake.org/). Similar to my approach to writing code, things will be kept as simple as possible with the added benefit of being able to follow this tutorial with a wide variety of C++ compilers and IDEs.
 
-To create build files for your C++ IDE, run CMake in the root folder of the project like this:
+To create build files for your C++ IDE, run CMake in the source folder of the project like this:
 
 ```bash
 cmake -B build -G "Visual Studio 17 2022"
