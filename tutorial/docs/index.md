@@ -32,7 +32,7 @@ The tutorial is focused on writing actual Vulkan code and getting things up and 
 
 ## Goal
 
-We focus on rasterization, other parts of Vulkan like compute or raytracing are not covered. At the end of this we'll have multiple illuminated and textured 3D objects on screen that can be rotated using the mouse. Source comes in a single file with a few hundred lines of code, no abstractions, hard to read modern C++ language constructs or object-oriented shenanigans. I believe that being able to follow source code from top to bottom without having to go through multiple layers of abstractions makes it much easier to follow.
+We focus on rasterization, other parts of Vulkan like compute or raytracing are not covered. At the end of this we'll have multiple illuminated and textured 3D objects on screen that can be rotated using the mouse ([screenshot](images/screenshot.png)). Source comes in a single file with a few hundred lines of code, no abstractions, hard to read modern C++ language constructs or object-oriented shenanigans. I believe that being able to follow source code from top to bottom without having to go through multiple layers of abstractions makes it much easier to follow.
 
 ## License
 
