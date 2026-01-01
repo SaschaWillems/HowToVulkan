@@ -139,7 +139,7 @@ This is very simple. We pass our application info and both the names and number 
 
 !!! Tip
 
-	Most Vulkan functions can fail in different ways and return a VkResult [`VkResult`](https://docs.vulkan.org/refpages/latest/refpages/source/VkResult.html) value. We use a small inline function called `chk` to check that return code and in case of an error we exit the application. In a real-world application you should do more sophisticated error handling.
+	Most Vulkan functions can fail in different ways and return a [`VkResult`](https://docs.vulkan.org/refpages/latest/refpages/source/VkResult.html) value. We use a small inline function called `chk` to check that return code and in case of an error we exit the application. In a real-world application you should do more sophisticated error handling.
 
 ## Queues
 
@@ -163,7 +163,7 @@ for (size_t i = 0; i < queueFamilies.size(); i++) {
 
 	You'll rarely find GPUs that don't have a queue family that supports graphics. Also most of the time the first queue family supports both graphics and compute (as well as presentation, more on that later). It's still a good practice to check this like we do above, esp. if you add in other queue types like compute.
 
-For our next step we need to reference that queue family using a [`VkDeviceQueueCreateInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDeviceQueueCreateInfo.html). While we don't do that, it's possible to request multiple queues from the same family. That's why we need to specify priorities in `pQueuePriorities` (in our case just one). With multiple queues from the same family, a driver might use that information to prioritize work:
+For our next step we need to reference that queue family using a [`VkDeviceQueueCreateInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkDeviceQueueCreateInfo.html). It is possible to request multiple queues from the same family, but we won't require that. That's why we need to specify priorities in `pQueuePriorities` (in our case just one). With multiple queues from the same family, a driver might use that information to prioritize work:
 
 ```cpp
 const float qfpriorities{ 1.0f };
@@ -196,7 +196,7 @@ chk(vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data()));
 
 	Having to call functions that return some sort of list twice is common in the Vulkan C-API. The first call will return the number of elements, which is then used to properly size the result list. The second call then fills the actual result list.
 
-After the second call to [`vkEnumeratePhysicalDevices`](https://docs.vulkan.org/refpages/latest/refpages/source/vkEnumeratePhysicalDevices.html) we have a list of Vulkan capable devices in `devices`. On most systems there will only be one device, so for simplicity we use the first physical device. In a real-world application you could let the user select different devices, e.g. via command line arguments.
+After the second call to [`vkEnumeratePhysicalDevices`](https://docs.vulkan.org/refpages/latest/refpages/source/vkEnumeratePhysicalDevices.html) we have a list of available Vulkan capable devices. On most systems there will only be one device, so for simplicity we use the first physical device. In a real-world application you could let the user select different devices, e.g. via command line arguments.
 
 One thing that's also part of device creation is requesting features and extensions we want to use. Our instance was created with Vulkan 1.3 as a baseline, which gives us almost all the features we want to use. So we only have to request the [`VK_KHR_swapchain`](https://docs.vulkan.org/refpages/latest/refpages/source/VK_KHR_swapchain.html) extension in order to be able to present something to the screen:
 
@@ -208,7 +208,7 @@ const std::vector<const char*> deviceExtensions{ VK_KHR_SWAPCHAIN_EXTENSION_NAME
 
 	The Vulkan header defines constants for all extensions like `VK_KHR_SWAPCHAIN_EXTENSION_NAME`. You can use these instead of writing their name as a string. This helps to avoid typos in extension names.
 
-Using Vulkan 1.3 as a baseline, we can use the features mentioned [earlier on](#about) without resorting to extensions. That would require more code, and also checks and fallback paths if an extensions would not be present. So instead we can simply enable the features:
+Using Vulkan 1.3 as a baseline, we can use the features mentioned [earlier on](#about) without resorting to extensions. When using extension, that would require more code, and checks and fallback paths if an extensions would not be present. With core features, we can instead simply enable them:
 
 ```cpp
 VkPhysicalDeviceVulkan12Features enabledVk12Features{
@@ -229,15 +229,13 @@ const VkPhysicalDeviceFeatures enabledVk10Features{
 };
 ```
 
-`descriptorBindingVariableDescriptorCount` and `runtimeDescriptorArray` are related to descriptor indexing, the rest of the names match the actual feature.
-
-We also enable [anisotropic filtering](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceFeatures.html#_members) for texture images for better filtering.
+`descriptorBindingVariableDescriptorCount` and `runtimeDescriptorArray` are related to descriptor indexing, the rest of the names match the actual feature. We also enable [anisotropic filtering](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceFeatures.html#_members) for better texture filtering.
 
 !!! Info
 
 	Another Vulkan struct member you're going to see often is `pNext`. This can be used to create a linked list of structures that are passed into a function call. The driver then uses the `sType` member of each structure in that list to identify said structure's type.
 
-With everything in place, we can create a logical device passing all required data: features (for the different core versions), extensions and the queue families we want to use:
+With everything in place, we can create a logical device with the core features, extensions and the queue families we want to use:
 
 ```cpp
 VkDeviceCreateInfo deviceCI{
@@ -260,7 +258,7 @@ vkGetDeviceQueue(device, queueFamily, 0, &queue);
 
 ## Setting up VMA
 
-Vulkan is an explicit API, which also applies to memory management. As noted in the list of libraries we will be using the [Vulkan Memory Allocator (VMA)](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) to simplify this as far as possible.
+Vulkan is an explicit API, which also applies to memory management. As noted in the list of libraries we will be using the [Vulkan Memory Allocator (VMA)](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) to significantly simplify this area.
 
 VMA provides an allocator used to allocate memory from. This needs to be set up for your project once. For that we pass in pointers to some common Vulkan functions, our Vulkan instance and device, we also enable support for buffer device address (`flags`):
 
@@ -306,7 +304,7 @@ And then request a Vulkan surface for that window:
 chk(window.createVulkanSurface(instance, surface));
 ```
 
-For the following chapter(s) we'll need to know the properties surface we just created, so we get them via [`vkGetPhysicalDeviceSurfaceCapabilitiesKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceSurfaceCapabilitiesKHR.html) and store it for future reference:
+For the following chapter(s) we'll need to know the properties surface we just created, so we get them via [`vkGetPhysicalDeviceSurfaceCapabilitiesKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceSurfaceCapabilitiesKHR.html) and store them for future reference:
 
 ```cpp
 VkSurfaceCapabilitiesKHR surfaceCaps{};
@@ -315,7 +313,7 @@ chk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(devices[deviceIndex], surface, &su
 
 ## Swapchain
 
-To visually present something to a surface (in our case, the window) we need to create a swapchain. It's basically a series of images that you enqueue to the presentation engine of the operating system. The [`VkSwapchainCreateInfoKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSwapchainCreateInfoKHR.html) is pretty extensive and requires some explanation.
+To visually present something to a surface (in our case, the window) we need to create a swapchain. It's basically a series of images, storing color information, that you enqueue to the presentation engine of the operating system. The [`VkSwapchainCreateInfoKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSwapchainCreateInfoKHR.html) is pretty extensive and requires some explanation.
 
 ```cpp
 const VkFormat imageFormat{ VK_FORMAT_B8G8R8A8_SRGB };
@@ -354,7 +352,7 @@ swapchainImageViews.resize(imageCount);
 
 ## Depth attachment
 
-The swapchain images give us a way of storing color values. But we'll render three-dimensional objects and want make sure they're properly displayed, no matter from what perspective you look at them, or in which order their triangles are rasterized. That's done via [depth testing](https://docs.vulkan.org/spec/latest/chapters/fragops.html#fragops-depth) and to use that we need to have a depth attachment.
+As we're rendering three-dimensional objects, we want to make sure they're properly displayed, no matter from what perspective you look at them, or in which order their triangles are rasterized. That's done via [depth testing](https://docs.vulkan.org/spec/latest/chapters/fragops.html#fragops-depth) and to use that we need to have a depth attachment.
 
 The properties of the depth image are defined in a [`VkImageCreateInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageCreateInfo.html) structure. Some of these are similar to those found at swapchain creation:
 
@@ -434,7 +432,7 @@ We're using the [tinyobjloader library](https://github.com/tinyobjloader/tinyobj
 tinyobj::attrib_t attrib;
 std::vector<tinyobj::shape_t> shapes;
 std::vector<tinyobj::material_t> materials;
-chk(tinyobj::LoadObj(&attrib, &shapes, &materials, nullptr, nullptr, "assets/monkey.obj"));
+chk(tinyobj::LoadObj(&attrib, &shapes, &materials, nullptr, nullptr, "assets/suzanne.obj"));
 ```
 
 After a successful call to `LoadObj`, we can access the vertex data stored in the selected .obj file. `attrib` contains a linear array of the vertex data, `shapes` contains indices into that data. `materials` won't be used, we'll do our own shading. 
@@ -443,7 +441,9 @@ After a successful call to `LoadObj`, we can access the vertex data stored in th
 
 	The .obj format is a bit dated and doesn't match modern 3D pipelines in all aspects. One such aspect is indexing of the vertex data. Due to how .obj files are structured we end up with one index per vertex, which limits the effectiveness of indexed rendering. In a real-world application you'd use formats that work well with indexed rendering like glTF.
 
-We'll be using interleaved vertex attributes meaning that (in memory) for every vertex three floats for position data are followed by two floats for texture coordinates. For that to work we need to combine the position and texture coordinate data that tinyobj provides us with:
+We'll be using interleaved vertex attributes. Interleaved means, that in memory, for every vertex three floats for the position are followed by three floats for the normal vector (used for lighting), which in turn is followed by two floats for texture coordinates.
+
+To make that work, we need to convert position, normal and texture coordinate values data provided by tinyobj:
 
 ```cpp
 const VkDeviceSize indexCount{shapes[0].mesh.indices.size()};	
@@ -453,6 +453,7 @@ std::vector<uint16_t> indices{};
 for (auto& index : shapes[0].mesh.indices) {
 	Vertex v{
 		.pos = { attrib.vertices[index.vertex_index * 3], -attrib.vertices[index.vertex_index * 3 + 1], attrib.vertices[index.vertex_index * 3 + 2] },
+		.normal = { attrib.normals[index.normal_index * 3], -attrib.normals[index.normal_index * 3 + 1], attrib.normals[index.normal_index * 3 + 2] },
 		.uv = { attrib.texcoords[index.texcoord_index * 2], 1.0 - attrib.texcoords[index.texcoord_index * 2+ 1] }
 	};
 	vertices.push_back(v);
@@ -462,7 +463,7 @@ for (auto& index : shapes[0].mesh.indices) {
 
 !!! Tip
 	
-	The value of the position's y-axis and the texture coordinate's v-axis are flipped to accommodate for Vulkan's coordinate system. Otherwise the model and the texture image would appear upside down.
+	The value of the position's and normal's y-axis, and the texture coordinate's v-axis are flipped. This is done to accommodate for Vulkan's coordinate system. Otherwise the model and the texture image would appear upside down.
 
 With the data stored in an interleaved way we can now upload it to the GPU. For that we need to create a buffer that's going to hold the vertex and index data:
 
@@ -506,7 +507,7 @@ vmaUnmapMemory(allocator, vBufferAllocation);
 
 ## CPU and GPU parallelism
 
-In graphics heavy applications, the CPU is mostly used to feed work to the GPU. When OpenGL was invented, computers had one CPU with a single core. But today, even mobile devices have multiple cores. Vulkan gives us more explicit control over how work is distributed across CPU and GPU.
+In graphics heavy applications, the CPU is mostly used to feed work to the GPU. When OpenGL was invented, computers had one CPU with a single core. But today, even mobile devices have multiple cores and Vulkan gives us more explicit control over how work is distributed across these and the GPU.
 
 This lets us have CPU and GPU work in parallel where possible. So while the GPU is still busy, we can already start creating the next "work package" on the CPU. The naive approach would be having the GPU always wait on the CPU (and vice versa), but that would kill any chance of parallelism.
 
@@ -553,11 +554,11 @@ struct UniformData {
 
 	It's important to match structure layouts between CPU-side and GPU-side. Depending on the data types and arrangement used, layouts might look the same but will actually be different due to how shading languages align struct members. One way to avoid this, aside from manually aligning or padding structures, is to use Vulkan's [VK_EXT_scalar_block_layout](https://docs.vulkan.org/refpages/latest/refpages/source/VK_EXT_scalar_block_layout.html) or the corresponding Vulkan 1.2 core feature (both are optional).
 
-Uniform here means that the data provided to the GPU by such a buffer is uniform (aka constant) across all shader invocations for a draw call. This is an important guarantee for the GPU and also one of the reason we have one uniform buffer per frame in flight. Update uniform data from the CPU while the GPU hasn't finished reading it might cause all sorts of issues.
+Uniform here means that the data provided to the GPU by such a buffer is uniform (aka constant) across all shader invocations for a draw call. This is an important guarantee for the GPU and also one of the reason we have one uniform buffer per frame in flight. Updating uniform data from the CPU while the GPU hasn't finished reading it might cause all sorts of issues.
 
 If we were to use older Vulkan versions we now *would* have to deal with descriptors, a fundamental but partially limiting and hard to manage part of Vulkan. 
 
-But by using Vulkan 1.3's [Buffer device address](https://docs.vulkan.org/guide/latest/buffer_device_address.html) feature, we can do away with descriptors (for buffers). Instead of having to access them through descriptors, we can access buffers via their address using pointer syntax in the shader. Not only does that make things easier to understand, it also removes some coupling and requires less code.
+But by using Vulkan 1.3's [buffer device address](https://docs.vulkan.org/guide/latest/buffer_device_address.html) feature, we can do away with descriptors (for buffers). Instead of having to access them through descriptors, we can access buffers via their address using pointer syntax in the shader. Not only does that make things easier to understand, it also removes some coupling and requires less code.
 
 As mentioned in [the previous chapter](#cpu-and-gpu-parallelism), we create one uniform buffer per the maximum number of frames in flight. That way we can update one buffer on the CPU while the GPU reads from another one. This ensures we don't run into any read/write hazards where the CPU starts updating values while the GPU is still reading them:
 
@@ -595,7 +596,7 @@ To be able to access the buffer in our shader, we then get its device address an
 
 ## Synchronization objects
 
-Another area where Vulkan is very explicit is [synchronization](https://docs.vulkan.org/spec/latest/chapters/synchronization.html). Other APIs like OpenGL did this implicitly for us. We need to make sure that access to GPU resources is properly guarded to avoid any write/read hazards that could happen by e.g. the CPU starting to write to memory still in use by the GPU. This is somewhat similar to doing multithreading on the CPU but more complicated because we need to make this work between the CPU and GPU, both being very different type of processing units, and also on the GPU itself.
+Another area where Vulkan is very explicit is [synchronization](https://docs.vulkan.org/spec/latest/chapters/synchronization.html). Other APIs like OpenGL did this implicitly for us. But here, we need to make sure that access to GPU resources is properly guarded to avoid any write/read hazards that could happen by e.g. the CPU starting to write to memory still in use by the GPU. This is somewhat similar to doing multithreading on the CPU but more complicated because we need to make this work between the CPU and GPU, both being very different type of processing units, and also on the GPU itself.
 
 !!! Warning
 
@@ -607,7 +608,7 @@ We'll be using different means of synchronization during this tutorial:
 * [Semaphores](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-semaphores) are used to control access to resources on the GPU-side (only). We use them to ensure proper ordering for things like presentation.
 * [Pipeline barriers](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-pipeline-barriers) are used to control resource access within a GPU queue. We use them for layout transitions of images.
 
-Fences and semaphores are objects that we have to create and store, barriers will be discussed later:
+Fences and semaphores are objects that we have to create and store, barriers instead are issued as commands and will be discussed later:
 
 ```cpp
 VkSemaphoreCreateInfo semaphoreCI{
@@ -637,7 +638,7 @@ There aren't a lot of options for creating these objects. Fences will be created
 
 Unlike older APIs like OpenGL, you can't arbitrarily issue commands to the GPU in Vulkan. Instead we have to record these into [command buffers](https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html) and then submit them to a [queue](#queues).
 
-While this makes things a bit more complicated from the application's point-of-view it helps the driver to optimize things and also enables applications to record command buffers on separate threads. That's another spot where Vulkan allows us to better utilize CPU and GPU resources.
+While this makes things a bit more complicated from the application's point-of-view, it helps the driver to optimize things and also enables applications to record command buffers on separate threads. That's another spot where Vulkan allows us to better utilize CPU and GPU resources.
 
 Command buffers have to be allocated from a [command pool](https://docs.vulkan.org/refpages/latest/refpages/source/VkCommandPool.html), an object that helps the driver optimize allocations:
 
@@ -827,7 +828,7 @@ It might look a bit overwhelming at first but it's easily explained. Earlier on 
 
 	Extensions that would make this easier are [VK_EXT_host_image_copy](https://www.khronos.org/blog/copying-images-on-the-host-in-vulkan), allowing for copying image date directly from the CPU without having to use a command buffer and [VK_KHR_unified_image_layouts](https://www.khronos.org/blog/so-long-image-layouts-simplifying-vulkan-synchronisation), simplifying image layouts. These aren't widely supported yet, but future candidates for making Vulkan easier to use.
 
-Later on we'll sample these textures in our shader. How sampling is done in the shader is defined by a sampler object. We want smooth linear filtering, so we enable [anisotropic filter](https://docs.vulkan.org/spec/latest/chapters/textures.html#textures-texel-anisotropic-filtering) to reduce blur and aliasing. We also set the max. LOD to use all mip levels:
+Later on we'll sample these textures in our shader, and sampling parameters used there are defined by a sampler object. We want smooth linear filtering, so we enable [anisotropic filter](https://docs.vulkan.org/spec/latest/chapters/textures.html#textures-texel-anisotropic-filtering) to reduce blur and aliasing. We also set the max. LOD to use all mip levels:
 
 ```cpp
 VkSamplerCreateInfo samplerCI{
@@ -941,17 +942,17 @@ The [VkDescriptorImageInfo](https://docs.vulkan.org/refpages/latest/refpages/sou
 
 ## Loading shaders
 
-As mentioned earlier we'll be using the Slang shading language. Vulkan can't directly load shaders written in such a language though (or GLSL or HLSL). It expects them in the SPIR-V intermediate format. For that we need to compile from Slang to SPIR-V first. There are two approaches to do that: Compile offline using Slang's command line compiler or compile at runtime using Slang's library.
+As mentioned earlier we'll be using the [Slang language](https://github.com/shader-slang) to write shaders running on the GPU. Vulkan can't directly load shaders written in such a language though (or GLSL or HLSL). It expects them in the SPIR-V intermediate format. For that we need to compile from Slang to SPIR-V first. There are two approaches to do that: Compile offline using Slang's command line compiler or compile at runtime using Slang's library.
 
 We'll go for the latter as that makes updating shaders a bit easier. With offline compilation you'd have to recompile the shaders every time you change them or find a way to have the build system do that for you. With runtime compilation we'll always use the latest shader version when running our code.
 
-To compile Slang shaders we first create a global Slang session, which is the connection between our application and the Slang library:
+To compile Slang shaders, we first create a global Slang session, which is the connection between our application and the Slang library:
 
 ```cpp
 slang::createGlobalSession(slangGlobalSession.writeRef());
 ```
 
-Next we create a session to define our compilations scope. We want to compile to SPIR-V, so we need to set the target `format` to `SLANG_SPIRV`. Similar to using a fixed Vulkan version as a baseline we want [SPIR-V 1.4](https://docs.vulkan.org/refpages/latest/refpages/source/VK_KHR_spirv_1_4.html) as our baseline for shaders. This has been added to the core in Vulkan 1.2, so it's guaranteed to be support in our case. We also change the `defaultMatrixLayoutMode` to a column major layout to match the matrix layout to what Vulkan uses:
+Next we create a session to define our compilations scope. We want to compile to SPIR-V, so we need to set the target `format` to `SLANG_SPIRV`. Similar to using a fixed Vulkan version as a baseline we want [SPIR-V 1.4](https://docs.vulkan.org/refpages/latest/refpages/source/VK_KHR_spirv_1_4.html) as our baseline for shaders. This has been added to the core in Vulkan 1.2, so it's guaranteed to be support in our case. We also change the `defaultMatrixLayoutMode` to a column major layout to match the matrix layout used by Vulkan:
 
 ```cpp
 auto slangTargets{ std::to_array<slang::TargetDesc>({ {
@@ -973,7 +974,7 @@ Slang::ComPtr<slang::ISession> slangSession;
 slangGlobalSession->createSession(slangSessionDesc, slangSession.writeRef());
 ```
 
-After a call to `createSession` we can use that session to get the SPIR-V. We first load the shader from a file using `loadModuleFromSource` and then use `getTargetCode` to compile all entry points in our shader to SPIR-V:
+After a call to `createSession` we can use that session to get the SPIR-V representation of the Slang shader. We first load the textual shader from a file using `loadModuleFromSource` and then use `getTargetCode` to compile all entry points in our shader to SPIR-V:
 
 ```cpp
 Slang::ComPtr<slang::IModule> slangModule{ slangSession->loadModuleFromSource("triangle", "assets/shader.slang", nullptr, nullptr) };
@@ -992,6 +993,10 @@ VkShaderModuleCreateInfo shaderModuleCI{
 VkShaderModule shaderModule{};
 chk(vkCreateShaderModule(device, &shaderModuleCI, nullptr, &shaderModule));
 ```
+
+!!! Tip
+
+	The [VK_KHR_maintenance5](https://docs.vulkan.org/refpages/latest/refpages/source/VK_KHR_maintenance5.html) extension, which became core with Vulkan 1.4, deprecated shader modules. It allows direct passing of `VkShaderModuleCreateInfo` to the pipeline's shader stage create info.
 
 ## The shader
 
@@ -1106,12 +1111,13 @@ VkVertexInputBindingDescription vertexBinding{
 };
 ```
 
-Next we specify how [vertex attributes](https://docs.vulkan.org/refpages/latest/refpages/source/VkVertexInputAttributeDescription.html) like position and texture coordinates are laid out in memory. This exactly matches our simple vertex structure:
+Next we specify how [vertex attributes](https://docs.vulkan.org/refpages/latest/refpages/source/VkVertexInputAttributeDescription.html) for position, normals and texture coordinates are laid out in memory. This exactly matches our CPU-side vertex structure:
 
 ```cpp
 std::vector<VkVertexInputAttributeDescription> vertexAttributes{
 	{ .location = 0, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT },
-	{ .location = 1, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(Vertex, uv) },
+	{ .location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(Vertex, normal) },
+	{ .location = 2, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = offsetof(Vertex, uv) },
 };
 ```
 !!! Tip
@@ -1127,7 +1133,7 @@ VkPipelineVertexInputStateCreateInfo vertexInputState{
 	.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 	.vertexBindingDescriptionCount = 1,
 	.pVertexBindingDescriptions = &vertexBinding,
-	.vertexAttributeDescriptionCount = 2,
+	.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributes.size()),,
 	.pVertexAttributeDescriptions = vertexAttributes.data(),
 };
 ```
