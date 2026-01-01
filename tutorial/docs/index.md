@@ -30,9 +30,9 @@ tl;dr: Doing Vulkan in 2026 can be very different from doing Vulkan in 2016. Tha
 
 The tutorial is focused on writing actual Vulkan code and getting things up and running as fast as possible (possibly in an afternoon). It won't explain programming, software architecture, graphics concepts or how Vulkan works (in detail). Instead it'll often contain links to relevant information like the [Vulkan specification](https://docs.vulkan.org/). You should bring at least basic knowledge of C/C++ and realtime graphics concepts.
 
-## Approach
+## Goal
 
-We focus on rasterization, other parts of Vulkan like compute or raytracing are not covered. At the end of this we'll have multiple textured objects on screen that can be rotated using the mouse. Source comes in a single file with a few hundred lines of code, no abstractions, hard to read modern C++ language constructs or object-oriented shenanigans. I believe that being able to follow source code from top to bottom without having to go through multiple layers of abstractions makes it much easier to follow.
+We focus on rasterization, other parts of Vulkan like compute or raytracing are not covered. At the end of this we'll have multiple illuminated and textured 3D objects on screen that can be rotated using the mouse. Source comes in a single file with a few hundred lines of code, no abstractions, hard to read modern C++ language constructs or object-oriented shenanigans. I believe that being able to follow source code from top to bottom without having to go through multiple layers of abstractions makes it much easier to follow.
 
 ## License
 
@@ -535,15 +535,16 @@ std::array<VkCommandBuffer, maxFramesInFlight> commandBuffers;
 
 ## Uniform buffers
 
-We also want to pass values to our [shaders](#the-shader) that can change dynamically. For that we are going to use a different buffer type (than for mesh data), namely uniform buffers. 
+We also want to pass values to our [shaders](#the-shader) that can change on the CPU side, e.g. from user input. For that we are going to use a different buffer type (than for mesh data), namely uniform buffers. 
 
-The data we want to pass is stored in a single struct and contains a projection and view matrix. As we are going to render multiple models, we also store multiple model matrices a long with a selected model index that's used for some interactivity:
+The data we want to pass is stored in a single structure and laid out consecutively, so we can easily copy it over to the matching GPU structure:
 
 ```cpp
 struct UniformData {
 	glm::mat4 projection;
 	glm::mat4 view;
 	glm::mat4 model[3];
+	glm::vec4 lightPos{ 0.0f, -10.0f, 10.0f, 0.0f };
 	uint32_t selected{1};
 } uniformData{};
 ```
@@ -998,7 +999,8 @@ Even though shading languages are limited compared to CPU programming languages,
 
 ```slang
 struct VSInput {
-	float3 Pos;
+    float3 Pos;
+    float3 Normal;
 	float2 UV;
 };
 
@@ -1008,29 +1010,48 @@ struct UBO {
     float4x4 projection;
     float4x4 view;
     float4x4 model[3];
+    float4 lightPos;	
     uint32_t selected;
 };
 
 struct VSOutput {
-	float4 Pos : SV_POSITION;
+    float4 Pos : SV_POSITION;
+    float3 Normal;
     float2 UV;
     float3 Factor;
+    float3 LightVec;
+    float3 ViewVec;
     uint32_t InstanceIndex;
 };
 
 [shader("vertex")]
 VSOutput main(VSInput input, uniform UBO *ubo, uint instanceIndex : SV_VulkanInstanceID) {
-	VSOutput output;
-	output.UV = input.UV;
-    output.Pos = mul(ubo->projection, mul(ubo->view, mul(ubo->model[instanceIndex], float4(input.Pos.xyz, 1.0))));
+    VSOutput output;
+    float4x4 modelMat = ubo->model[instanceIndex];
+    output.Normal = mul((float3x3)mul(ubo->view, modelMat), input.Normal);
+    output.UV = input.UV;
+    output.Pos = mul(ubo->projection, mul(ubo->view, mul(modelMat, float4(input.Pos.xyz, 1.0))));
     output.Factor = (ubo.selected == instanceIndex ? 3.0f : 1.0f);
     output.InstanceIndex = instanceIndex;
+    // Calculate view vectors required for lighting
+    float4 fragPos = mul(mul(ubo->view, modelMat), float4(input.Pos.xyz, 1.0));
+    output.LightVec = ubo.lightPos.xyz - fragPos.xyz;
+    output.ViewVec = -fragPos.xyz;
     return output;
 }
 
 [shader("fragment")]
 float4 main(VSOutput input) {
-    return float4(textures[input.InstanceIndex].Sample(input.UV).rgb * input.Factor, 1.0);
+    // Phong lighting
+    float3 N = normalize(input.Normal);
+    float3 L = normalize(input.LightVec);
+    float3 V = normalize(input.ViewVec);
+    float3 R = reflect(-L, N);
+    float3 diffuse = max(dot(N, L), 0.0025);
+    float3 specular = pow(max(dot(R, V), 0.0), 16.0) * 0.75;
+    // Sample from texture
+    float3 color = textures[input.InstanceIndex].Sample(input.UV).rgb * input.Factor;
+    return float4(diffuse * color.rgb + specular, 1.0);
 }
 ```
 
@@ -1042,7 +1063,7 @@ It contains two shading stages and starts with defining structures that are used
 
 First is the vertex shader, marked by the `[shader("vertex")]` attribute. It takes in vertices defined as per `VSInput`, matching the vertex layout from the [graphics pipeline](#graphics-pipeline). The vertex shader will be invoked for every vertex [drawn](#record-command-buffers). As we use buffer device address, we pass and access the UBO as a pointer. As we draw multiple instances of our 3D model and want to use different matrices for every instance, we use the built-in `SV_VulkanInstanceID` system value to index into the model matrices. We also want to highlight the selected model, so if the current instance matches that selection, we pass a different color factor to the fragment shader.
 
-Second is the fragment shader, marked by the `[shader("fragment")]` attribute. This uses values passed from the vertex shader to sample from the [texture](#loading-textures) and outputs that to the color attachment. To demonstrate descriptor indexing we also index into the array of texture descriptors (`Sampler2D textures[]`) using the instance index passed by the vertex shader.
+Second is the fragment shader, marked by the `[shader("fragment")]` attribute. First we calculate some basic lighting using the [phong reflection model](https://en.wikipedia.org/wiki/Phong_reflection_model) with values passed from the vertex shader. Then, to demonstrate descriptor indexing, we read from the array of textures (`Sampler2D textures[]`) using the instance index, and finally combine that with the lighting calculation. This is written to the current color attachment.
 
 ## Graphics pipeline
 
