@@ -187,7 +187,7 @@ Now that we have a connection to the Vulkan library and know what queue family w
 	
 	When dealing with Vulkan a commonly used term is implementation. This refers to something that implements the Vulkan API. Usually it's the driver for your GPU, but it also could be a CPU based software implementation. To keep things simple we'll be using the term GPU for the rest of the tutorial.
 
-First we need to get a list physical devices currently available:
+First we need to get a list of physical devices currently available:
 
 ```cpp
 uint32_t deviceCount{ 0 };
