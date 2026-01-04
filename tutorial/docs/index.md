@@ -910,7 +910,7 @@ VkDescriptorPoolCreateInfo descPoolCI{
 chk(vkCreateDescriptorPool(device, &descPoolCI, nullptr, &descriptorPool));
 ```
 
-The number of descriptor types we want to allocate must be specified here upfront. We need as many descriptors for combined image and samplers as we load textures. We also have to specify how many descriptor sets (**not** descriptors) we want to allocate via `maxSets`. That's one, because we with descriptor indexing, we use an array of combined image and samplers. It's also only ever accessed by the GPU, so there is no need to duplicate it per max. frames in flight. Getting pool size right is important, as allocations beyond the requested counts will fail.
+The number of descriptor types we want to allocate must be specified here upfront. We need as many descriptors for combined image and samplers as we load textures. We also have to specify how many descriptor sets (**not** descriptors) we want to allocate via `maxSets`. That's one, because with descriptor indexing, we use an array of combined image and samplers. It's also only ever accessed by the GPU, so there is no need to duplicate it per max. frames in flight. Getting pool size right is important, as allocations beyond the requested counts will fail.
 
 Next we allocate the descriptor set from that pool. While the descriptor set layout defines the interface, the descriptor contains the actual descriptor data. The reason that layouts and sets are split is because you can mix layouts and re-use them for different descriptors sets. 
 
