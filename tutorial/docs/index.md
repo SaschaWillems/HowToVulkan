@@ -986,7 +986,9 @@ slangGlobalSession->createSession(slangSessionDesc, slangSession.writeRef());
 After a call to `createSession` we can use that session to get the SPIR-V representation of the Slang shader. We first load the textual shader from a file using `loadModuleFromSource` and then use `getTargetCode` to compile all entry points in our shader to SPIR-V:
 
 ```cpp
-Slang::ComPtr<slang::IModule> slangModule{ slangSession->loadModuleFromSource("triangle", "assets/shader.slang", nullptr, nullptr) };
+Slang::ComPtr<slang::IModule> slangModule{
+    slangSession->loadModuleFromSource("triangle", "assets/shader.slang", nullptr, nullptr)
+};
 Slang::ComPtr<ISlangBlob> spirv;
 slangModule->getTargetCode(0, spirv.writeRef());
 ```
