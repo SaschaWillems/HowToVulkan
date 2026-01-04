@@ -961,7 +961,7 @@ To compile Slang shaders, we first create a global Slang session, which is the c
 slang::createGlobalSession(slangGlobalSession.writeRef());
 ```
 
-Next we create a session to define our compilations scope. We want to compile to SPIR-V, so we need to set the target `format` to `SLANG_SPIRV`. Similar to using a fixed Vulkan version as a baseline we want [SPIR-V 1.4](https://docs.vulkan.org/refpages/latest/refpages/source/VK_KHR_spirv_1_4.html) as our baseline for shaders. This has been added to the core in Vulkan 1.2, so it's guaranteed to be support in our case. We also change the `defaultMatrixLayoutMode` to a column major layout to match the matrix layout used by Vulkan:
+Next we create a session to define our compilations scope. We want to compile to SPIR-V, so we need to set the target `format` to `SLANG_SPIRV`. Similar to using a fixed Vulkan version as a baseline we want [SPIR-V 1.4](https://docs.vulkan.org/refpages/latest/refpages/source/VK_KHR_spirv_1_4.html) as our baseline for shaders. This has been added to the core in Vulkan 1.2, so it's guaranteed to be supported in our case. We also change the `defaultMatrixLayoutMode` to a column major layout to match the matrix layout used by Vulkan:
 
 ```cpp
 auto slangTargets{ std::to_array<slang::TargetDesc>({ {
