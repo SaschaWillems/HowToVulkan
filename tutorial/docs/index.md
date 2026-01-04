@@ -1451,7 +1451,12 @@ Inside this render pass instance we can finally start recording GPU commands. Re
 We start by setting up the [viewport](https://docs.vulkan.org/spec/latest/chapters/vertexpostproc.html#vertexpostproc-viewport) to define our rendering area. We always want this to be the whole window. Same for the [scissor](https://docs.vulkan.org/spec/latest/chapters/fragops.html#fragops-scissor) area. Both are part of the dynamic state we enabled at [pipeline creation](#graphics-pipeline), so we can adjust them inside the command buffer instead of having to recreate the graphics pipeline on each window resize:
 
 ```cpp
-VkViewport vp{ .width = static_cast<float>(window.getSize().x), .height = static_cast<float>(window.getSize().y), .minDepth = 0.0f, .maxDepth = 1.0f};
+VkViewport vp{
+    .width = static_cast<float>(window.getSize().x),
+    .height = static_cast<float>(window.getSize().y),
+    .minDepth = 0.0f,
+    .maxDepth = 1.0f
+};
 vkCmdSetViewport(cb, 0, 1, &vp);
 VkRect2D scissor{ .extent{ .width = window.getSize().x, .height = window.getSize().y } };
 vkCmdSetScissor(cb, 0, 1, &scissor);
