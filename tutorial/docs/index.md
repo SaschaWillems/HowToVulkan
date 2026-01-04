@@ -748,7 +748,7 @@ VmaAllocationCreateInfo imgSrcAllocCI{
 chk(vmaCreateBuffer(allocator, &imgSrcBufferCI, &imgSrcAllocCI, &imgSrcBuffer, &imgSrcAllocation, nullptr));
 ```
 
-This buffer will be used as a temporary source for a buffer-to-image copy, so the only flag we need is [`VK_BUFFER_USAGE_TRANSFER_SRC_BIT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferUsageFlagBits.html). The allocation is one again handled by VMA.
+This buffer will be used as a temporary source for a buffer-to-image copy, so the only flag we need is [`VK_BUFFER_USAGE_TRANSFER_SRC_BIT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferUsageFlagBits.html). The allocation is handled by VMA, once again.
 
 As the buffer was created with the mappable bit, getting the image data into that buffer is again just a matter of a simple `memcpy`:
 
