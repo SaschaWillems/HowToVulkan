@@ -933,7 +933,7 @@ chk(vkAllocateDescriptorSets(device, &texDescSetAlloc, &descriptorSetTex));
 
 Similar to descriptor set layout creation, we have to pass the descriptor indexing setup to the allocation via  [VkDescriptorSetVariableDescriptorCountAllocateInfo](https://docs.vulkan.org/refpages/latest/refpages/source/VkDescriptorSetVariableDescriptorCountAllocateInfo.html) in `pNext`.
 
-The descriptor set allocated by [vkAllocateDescriptorSets](https://docs.vulkan.org/refpages/latest/refpages/source/vkAllocateDescriptorSets.html) is largely uninitialized and needs to be backed with actual data before we can access in a shader:
+The descriptor set allocated by [vkAllocateDescriptorSets](https://docs.vulkan.org/refpages/latest/refpages/source/vkAllocateDescriptorSets.html) is largely uninitialized and needs to be backed with actual data before we can access it in a shader:
 
 ```cpp
 VkWriteDescriptorSet writeDescSet{
