@@ -842,7 +842,7 @@ VkSamplerCreateInfo samplerCI{
 	.minFilter = VK_FILTER_LINEAR,
 	.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
 	.anisotropyEnable = VK_TRUE,
-	.maxAnisotropy = 8.0f,
+	.maxAnisotropy = 8.0f, // 8 is a widely supported value for max anisotropy
 	.maxLod = (float)ktxTexture->numLevels,
 };
 chk(vkCreateSampler(device, &samplerCI, nullptr, &textures[i].sampler));
