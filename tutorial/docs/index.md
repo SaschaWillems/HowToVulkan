@@ -831,7 +831,7 @@ It might look a bit overwhelming at first but it's easily explained. Earlier on 
 
 !!! Tip
 
-	Extensions that would make this easier are [VK_EXT_host_image_copy](https://www.khronos.org/blog/copying-images-on-the-host-in-vulkan), allowing for copying image date directly from the CPU without having to use a command buffer and [VK_KHR_unified_image_layouts](https://www.khronos.org/blog/so-long-image-layouts-simplifying-vulkan-synchronisation), simplifying image layouts. These aren't widely supported yet, but future candidates for making Vulkan easier to use.
+	Extensions that would make this easier are [VK_EXT_host_image_copy](https://www.khronos.org/blog/copying-images-on-the-host-in-vulkan), allowing for copying image data directly from the CPU without having to use a command buffer and [VK_KHR_unified_image_layouts](https://www.khronos.org/blog/so-long-image-layouts-simplifying-vulkan-synchronisation), simplifying image layouts. These aren't widely supported yet, but future candidates for making Vulkan easier to use.
 
 Later on we'll sample these textures in our shader, and sampling parameters used there are defined by a sampler object. We want smooth linear filtering, so we enable [anisotropic filter](https://docs.vulkan.org/spec/latest/chapters/textures.html#textures-texel-anisotropic-filtering) to reduce blur and aliasing. We also set the max. LOD to use all mip levels:
 
