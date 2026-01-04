@@ -852,7 +852,11 @@ At last we clean up and store descriptor related information for that texture to
 
 ```cpp
 ktxTexture_Destroy(ktxTexture);
-textureDescriptors.push_back({ .sampler = textures[i].sampler, .imageView = textures[i].view, .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL });
+textureDescriptors.push_back({
+    .sampler = textures[i].sampler,
+    .imageView = textures[i].view,
+    .imageLayout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL
+});
 ```
 
 Now that we have uploaded the texture images, put them into the correct layout and know how to sample them, we need a way for the GPU to access them in the shader. From the GPU's point of view, images are more complicated than buffers as the GPU needs more information on what they look like an how they're accessed. This is where [descriptors](https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html) are required, handles that represent (describe, hence the name) shader resources. 
