@@ -1448,7 +1448,7 @@ vkCmdBeginRendering(cb, &renderingInfo);
 
 Inside this render pass instance we can finally start recording GPU commands. Remember that these aren't issued to the GPU just yet, but are only recorded into the current command buffer.
 
-We start by setting up the [viewport](https://docs.vulkan.org/spec/latest/chapters/vertexpostproc.html#vertexpostproc-viewport) to define our rendering area. We always want this to be the whole window. Same for the [scissor](https://docs.vulkan.org/spec/latest/chapters/fragops.html#fragops-scissor) area. Both are part of the dynamic state we enabled at [pipeline creation](#graphics-pipeline), so we can adjust them inside the command buffer instead of having the recreate the graphics pipeline on each window resize:
+We start by setting up the [viewport](https://docs.vulkan.org/spec/latest/chapters/vertexpostproc.html#vertexpostproc-viewport) to define our rendering area. We always want this to be the whole window. Same for the [scissor](https://docs.vulkan.org/spec/latest/chapters/fragops.html#fragops-scissor) area. Both are part of the dynamic state we enabled at [pipeline creation](#graphics-pipeline), so we can adjust them inside the command buffer instead of having to recreate the graphics pipeline on each window resize:
 
 ```cpp
 VkViewport vp{ .width = static_cast<float>(window.getSize().x), .height = static_cast<float>(window.getSize().y), .minDepth = 0.0f, .maxDepth = 1.0f};
