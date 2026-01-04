@@ -308,7 +308,7 @@ And then request a Vulkan surface for that window:
 chk(window.createVulkanSurface(instance, surface));
 ```
 
-For the following chapter(s) we'll need to know the properties surface we just created, so we get them via [`vkGetPhysicalDeviceSurfaceCapabilitiesKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceSurfaceCapabilitiesKHR.html) and store them for future reference:
+For the following chapter(s) we'll need to know the properties of the surface we just created, we get them via [`vkGetPhysicalDeviceSurfaceCapabilitiesKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/vkGetPhysicalDeviceSurfaceCapabilitiesKHR.html) and store them for future reference:
 
 ```cpp
 VkSurfaceCapabilitiesKHR surfaceCaps{};
@@ -420,11 +420,12 @@ From Vulkan's perspective there is no technical difference between drawing a sin
 
 There are plenty of formats around for storing 3D models. [glTF](https://www.khronos.org/Gltf) for example offers a lot of features and is extensible in a way similar to Vulkan. But we want to keep things simple, so we'll be using the [Wavefront .obj format](https://en.wikipedia.org/wiki/Wavefront_.obj_file) instead. As far as 3D formats go, it won't get more plain than this. And it's supported by many tools like [Blender](https://www.blender.org/).
 
-First we declare a struct for the vertex data. Aside from vertex positions, we also need texture coordinates. These are colloquially abbreviated as [uv](https://en.wikipedia.org/wiki/UV_mapping):
+First we declare a struct for the vertex data. Aside from vertex positions, we also need normals (the direction a mesh face points to) and texture coordinates; colloquially abbreviated as [uv](https://en.wikipedia.org/wiki/UV_mapping):
 
 ```cpp
 struct Vertex {
 	glm::vec3 pos;
+    glm::vec3 normal;
 	glm::vec2 uv;
 };
 ```
