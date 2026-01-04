@@ -63,7 +63,7 @@ Vulkan consumes shaders in an intermediate format called [SPIR-V](https://www.kh
 
 ## Vulkan SDK
 
-While it's not required for developing Vulkan applications, the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home) provides a convenient way to install commonly used libraries and tools, some of which are used in this tutorial. It's therefore recommended to install this.
+While it's not required for developing Vulkan applications, the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home) provides a convenient way to install commonly used libraries and tools, some of which are used in this tutorial. It's therefore recommended to install this. When installing, make sure the GLM, Volk and Vulkan Memory Allocator components are selected (which is true by default).
 
 ## Validation layers
 
@@ -420,12 +420,12 @@ From Vulkan's perspective there is no technical difference between drawing a sin
 
 There are plenty of formats around for storing 3D models. [glTF](https://www.khronos.org/Gltf) for example offers a lot of features and is extensible in a way similar to Vulkan. But we want to keep things simple, so we'll be using the [Wavefront .obj format](https://en.wikipedia.org/wiki/Wavefront_.obj_file) instead. As far as 3D formats go, it won't get more plain than this. And it's supported by many tools like [Blender](https://www.blender.org/).
 
-First we declare a struct for the vertex data. Aside from vertex positions, we also need normals (the direction a mesh face points to) and texture coordinates; colloquially abbreviated as [uv](https://en.wikipedia.org/wiki/UV_mapping):
+First we declare a struct for the vertex data we plan to use in our application. That's vertex positions, vertex normals (used for lighting), and texture coordinates. These are colloquially abbreviated as [uv](https://en.wikipedia.org/wiki/UV_mapping):
 
 ```cpp
 struct Vertex {
 	glm::vec3 pos;
-    glm::vec3 normal;
+	glm::vec3 normal;
 	glm::vec2 uv;
 };
 ```
@@ -531,7 +531,7 @@ constexpr uint32_t maxFramesInFlight{ 2 };
 And use it to dimension all resources that are shared by the CPU and GPU:
 
 ```cpp
-std::array<UniformBuffers, maxFramesInFlight> uniformBuffers;
+std::array<ShaderDataBuffer, maxFramesInFlight> shaderDataBuffers;
 std::array<VkCommandBuffer, maxFramesInFlight> commandBuffers;
 ```
 
@@ -539,61 +539,60 @@ std::array<VkCommandBuffer, maxFramesInFlight> commandBuffers;
 
 	The concept of frames in flight only applies to resource shared by CPU and GPU. Resources that are only used by the GPU don't have to be multiplied. This applies to e.g. images.
 
-## Uniform buffers
+## Shader data buffers
 
-We also want to pass values to our [shaders](#the-shader) that can change on the CPU side, e.g. from user input. For that we are going to use a different buffer type (than for mesh data), namely uniform buffers. 
+We also want to pass values to our [shaders](#the-shader) that can change on the CPU side, e.g. from user input. For that we are going to create buffers that can be written by the CPU and read by the GPU. The data in these buffers stays constant (uniform) across all shader invocations for a draw call. This is an important guarantee for the GPU. 
 
 The data we want to pass is stored in a single structure and laid out consecutively, so we can easily copy it over to the matching GPU structure:
 
 ```cpp
-struct UniformData {
+struct ShaderData {
 	glm::mat4 projection;
 	glm::mat4 view;
 	glm::mat4 model[3];
 	glm::vec4 lightPos{ 0.0f, -10.0f, 10.0f, 0.0f };
 	uint32_t selected{1};
-} uniformData{};
+} shaderData{};
 ```
 
 !!! Warning
 
 	It's important to match structure layouts between CPU-side and GPU-side. Depending on the data types and arrangement used, layouts might look the same but will actually be different due to how shading languages align struct members. One way to avoid this, aside from manually aligning or padding structures, is to use Vulkan's [VK_EXT_scalar_block_layout](https://docs.vulkan.org/refpages/latest/refpages/source/VK_EXT_scalar_block_layout.html) or the corresponding Vulkan 1.2 core feature (both are optional).
 
-Uniform here means that the data provided to the GPU by such a buffer is uniform (aka constant) across all shader invocations for a draw call. This is an important guarantee for the GPU and also one of the reason we have one uniform buffer per frame in flight. Updating uniform data from the CPU while the GPU hasn't finished reading it might cause all sorts of issues.
 
 If we were to use older Vulkan versions we now *would* have to deal with descriptors, a fundamental but partially limiting and hard to manage part of Vulkan. 
 
 But by using Vulkan 1.3's [buffer device address](https://docs.vulkan.org/guide/latest/buffer_device_address.html) feature, we can do away with descriptors (for buffers). Instead of having to access them through descriptors, we can access buffers via their address using pointer syntax in the shader. Not only does that make things easier to understand, it also removes some coupling and requires less code.
 
-As mentioned in [the previous chapter](#cpu-and-gpu-parallelism), we create one uniform buffer per the maximum number of frames in flight. That way we can update one buffer on the CPU while the GPU reads from another one. This ensures we don't run into any read/write hazards where the CPU starts updating values while the GPU is still reading them:
+As mentioned in [the previous chapter](#cpu-and-gpu-parallelism), we create one shader data buffer per the maximum number of frames in flight. That way we can update one buffer on the CPU while the GPU reads from another one. This ensures we don't run into any read/write hazards where the CPU starts updating values while the GPU is still reading them:
 
 ```cpp
 for (auto i = 0; i < maxFramesInFlight; i++) {
 	VkBufferCreateInfo uBufferCI{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.size = sizeof(UniformData),
-		.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+		.size = sizeof(ShaderData),
+		.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
 	};
 	VmaAllocationCreateInfo uBufferAllocCI{
 		.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
 		.usage = VMA_MEMORY_USAGE_AUTO
 	};
-	chk(vmaCreateBuffer(allocator, &uBufferCI, &uBufferAllocCI, &uniformBuffers[i].buffer, &uniformBuffers[i].allocation, nullptr));
-	vmaMapMemory(allocator, uniformBuffers[i].allocation, &uniformBuffers[i].mapped);
+	chk(vmaCreateBuffer(allocator, &uBufferCI, &uBufferAllocCI, &shaderDataBuffers[i].buffer, &shaderDataBuffers[i].allocation, nullptr));
+	vmaMapMemory(allocator, shaderDataBuffers[i].allocation, &shaderDataBuffers[i].mapped);
 ```
 
-Creating uniform buffers is similar to creating the vertex/index buffers for our mesh. The create info structure states that we want to create a uniform buffer (`VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT`) that we access via its device address (`VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`). The buffer size must (at least) match that of our CPU data structure. We again use VMA to handle the allocation, using the same flags as for the vertex/index buffer to make sure we get a buffer that's accessible by both the CPU and GPU. Once the buffer has been created we map it persistently. Unlike in older APIs, this is perfectly fine in Vulkan and makes it easier to update the buffers later on, as we can just keep a permanent pointer to the buffer (memory).
+Creating these buffers is similar to creating the vertex/index buffers for our mesh. The create info structure states that we want to access this buffer via it's device address (`VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`). The buffer size must (at least) match that of our CPU data structure. We again use VMA to handle the allocation, using the same flags as for the vertex/index buffer to make sure we get a buffer that's accessible by both the CPU and GPU. Once the buffer has been created we map it persistently. Unlike in older APIs, this is perfectly fine in Vulkan and makes it easier to update the buffers later on, as we can just keep a permanent pointer to the buffer (memory).
 
 !!! Tip
 
-	Unlike larger, static buffers, uniform buffers don't have to be stored in the GPU's VRAM. While we still ask VMA for such a memory type, falling back to CPU-side memory wouldn't be an issue as uniform data is comparatively small.
+	Unlike larger, static buffers, buffers for passing small amounts of data to shaders don't have to be stored in the GPU's VRAM. While we still ask VMA for such a memory type, falling back to CPU-side memory wouldn't be an issue.
 
 ```cpp
 	VkBufferDeviceAddressInfo uBufferBdaInfo{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-		.buffer = uniformBuffers[i].buffer
+		.buffer = shaderDataBuffers[i].buffer
 	};
-	uniformBuffers[i].deviceAddress = vkGetBufferDeviceAddress(device, &uBufferBdaInfo);
+	shaderDataBuffers[i].deviceAddress = vkGetBufferDeviceAddress(device, &uBufferBdaInfo);
 }
 ```
 
@@ -633,7 +632,7 @@ for (auto& semaphore : renderSemaphores) {
 }
 ```
 
-There aren't a lot of options for creating these objects. Fences will be created in a signalled state by setting the `VK_FENCE_CREATE_SIGNALED_BIT` flag. Otherwise the first wait for such a fence would run into a timeout. We need one fence per [frame-in-flight](#cpu-and-gpu-parallelism) to sync between GPU and CPU. Same for the semaphore used to signal presentation. The no. of semaphores used to signal rendering needs to match that of the swapchain's images. The reason for this is explained later on in [command buffer submission](#submit-command-buffers). 
+There aren't a lot of options for creating these objects. Fences will be created in a signalled state by setting the `VK_FENCE_CREATE_SIGNALED_BIT` flag. Otherwise the first wait for such a fence would run into a timeout. We need one fence per [frame-in-flight](#cpu-and-gpu-parallelism) to sync between GPU and CPU. Same for the semaphore used to signal presentation. The no. of semaphores used to signal rendering needs to match that of the swapchain's images. The reason for this is explained later on in [command buffer submission](#submit-command-buffer). 
 
 !!! Tip
 
@@ -656,7 +655,7 @@ VkCommandPoolCreateInfo commandPoolCI{
 chk(vkCreateCommandPool(device, &commandPoolCI, nullptr, &commandPool));
 ```
 
-The [`VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkCommandPoolCreateFlagBits.html) flag lets us implicitly reset command buffers when [recording them](#record-command-buffers). We also have to specify the queue family that the command buffers allocated from this pool will be submitted too.
+The [`VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkCommandPoolCreateFlagBits.html) flag lets us implicitly reset command buffers when [recording them](#record-command-buffer). We also have to specify the queue family that the command buffers allocated from this pool will be submitted too.
 
 !!! Tip
 
@@ -731,7 +730,7 @@ chk(vkCreateImageView(device, &texVewCI, nullptr, &textures[i].view));
 
 With the empty image created it's time to upload data. Unlike buffers, we can't simply memcpy data to an image. That's because [optimal tiling](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageTiling.html) stores texels in a hardware-specific layout and we have no way to convert to that. Instead we have to create an intermediate buffer that we copy the data to, and then issue a command to the GPU that copies this buffer to the image, doing the conversion in turn.
 
-Creating that buffer is very much the same as creating the [uniform buffers](#uniform-buffers) with some minor differences:
+Creating that buffer is very much the same as creating the [shader data buffers](#shader-data-buffers) with some minor differences:
 
 ```cpp
 VkBuffer imgSrcBuffer{};
@@ -758,7 +757,7 @@ vmaMapMemory(allocator, imgSrcAllocation, &imgSrcBufferPtr);
 memcpy(imgSrcBufferPtr, ktxTexture->pData, ktxTexture->dataSize);
 ```
 
-Next we need to copy the image data from that buffer to the optimal tiled image on the GPU. For that we have to create a command buffer. We'll get into the detail on how they work [later on](#record-command-buffers). We also create a fence that's used to wait for the command buffer to finish execution:
+Next we need to copy the image data from that buffer to the optimal tiled image on the GPU. For that we have to create a command buffer. We'll get into the detail on how they work [later on](#record-command-buffer). We also create a fence that's used to wait for the command buffer to finish execution:
 
 ```cpp
 VkFenceCreateInfo fenceOneTimeCI{
@@ -861,7 +860,7 @@ textureDescriptors.push_back({
 
 Now that we have uploaded the texture images, put them into the correct layout and know how to sample them, we need a way for the GPU to access them in the shader. From the GPU's point of view, images are more complicated than buffers as the GPU needs more information on what they look like an how they're accessed. This is where [descriptors](https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html) are required, handles that represent (describe, hence the name) shader resources. 
 
-In earlier Vulkan versions we would also have to use them for buffers, but as noted in the [uniform buffers](#uniform-buffers) chapter, buffer device address saves us from doing that. There's no easy to use or widely available equivalent to that for images yet.
+In earlier Vulkan versions we would also have to use them for buffers, but as noted in the [shader data buffers](#shader-data-buffers) chapter, buffer device address saves us from doing that. There's no easy to use or widely available equivalent to that for images yet.
 
 And while descriptor handling is still one of the most verbose parts, using [Descriptor indexing](https://docs.vulkan.org/refpages/latest/refpages/source/VK_EXT_descriptor_indexing.html), simplifies this significantly respectively makes it easier to scale. With that feature we can go for a "bindless" setup, where all textures are put into one large array and indexed in the [shader](#the-shader) rather than having to create and bind descriptor sets for each and every texture. To demonstrate how this works we'll be loading multiple textures. This approach scales up no matter how many textures you use (within the limits of what the GPU supports).
 
@@ -1022,11 +1021,11 @@ struct VSInput {
 
 Sampler2D textures[];
 
-struct UBO {
+struct ShaderData {
     float4x4 projection;
     float4x4 view;
     float4x4 model[3];
-    float4 lightPos;	
+    float4 lightPos;
     uint32_t selected;
 };
 
@@ -1041,17 +1040,17 @@ struct VSOutput {
 };
 
 [shader("vertex")]
-VSOutput main(VSInput input, uniform UBO *ubo, uint instanceIndex : SV_VulkanInstanceID) {
+VSOutput main(VSInput input, uniform ShaderData *shaderData, uint instanceIndex : SV_VulkanInstanceID) {
     VSOutput output;
-    float4x4 modelMat = ubo->model[instanceIndex];
-    output.Normal = mul((float3x3)mul(ubo->view, modelMat), input.Normal);
+    float4x4 modelMat = shaderData->model[instanceIndex];
+    output.Normal = mul((float3x3)mul(shaderData->view, modelMat), input.Normal);
     output.UV = input.UV;
-    output.Pos = mul(ubo->projection, mul(ubo->view, mul(modelMat, float4(input.Pos.xyz, 1.0))));
-    output.Factor = (ubo.selected == instanceIndex ? 3.0f : 1.0f);
+    output.Pos = mul(shaderData->projection, mul(shaderData->view, mul(modelMat, float4(input.Pos.xyz, 1.0))));
+    output.Factor = (shaderData->selected == instanceIndex ? 3.0f : 1.0f);
     output.InstanceIndex = instanceIndex;
     // Calculate view vectors required for lighting
-    float4 fragPos = mul(mul(ubo->view, modelMat), float4(input.Pos.xyz, 1.0));
-    output.LightVec = ubo.lightPos.xyz - fragPos.xyz;
+    float4 fragPos = mul(mul(shaderData->view, modelMat), float4(input.Pos.xyz, 1.0));
+    output.LightVec = shaderData->lightPos.xyz - fragPos.xyz;
     output.ViewVec = -fragPos.xyz;
     return output;
 }
@@ -1075,9 +1074,9 @@ float4 main(VSOutput input) {
 
 	Slang lets us put all shader stages into a single file. That removes the need to duplicate the shader interface or having to put that into shared includes. It also makes it easier to read (and edit) the shader.
 
-It contains two shading stages and starts with defining structures that are used by the different stages. The `UBO` structure matches the layout of the uniform buffer data defined on the [CPU-side](#uniform-buffers).
+It contains two shading stages and starts with defining structures that are used by the different stages. The `ShaderData` structure matches the layout of the shader data structure defined on the [CPU-side](#shader-data-buffers).
 
-First is the vertex shader, marked by the `[shader("vertex")]` attribute. It takes in vertices defined as per `VSInput`, matching the vertex layout from the [graphics pipeline](#graphics-pipeline). The vertex shader will be invoked for every vertex [drawn](#record-command-buffers). As we use buffer device address, we pass and access the UBO as a pointer. As we draw multiple instances of our 3D model and want to use different matrices for every instance, we use the built-in `SV_VulkanInstanceID` system value to index into the model matrices. We also want to highlight the selected model, so if the current instance matches that selection, we pass a different color factor to the fragment shader.
+First is the vertex shader, marked by the `[shader("vertex")]` attribute. It takes in vertices defined as per `VSInput`, matching the vertex layout from the [graphics pipeline](#graphics-pipeline). The vertex shader will be invoked for every vertex [drawn](#record-command-buffer). As we use buffer device address, we pass and access the UBO as a pointer. As we draw multiple instances of our 3D model and want to use different matrices for every instance, we use the built-in `SV_VulkanInstanceID` system value to index into the model matrices. We also want to highlight the selected model, so if the current instance matches that selection, we pass a different color factor to the fragment shader.
 
 Second is the fragment shader, marked by the `[shader("fragment")]` attribute. First we calculate some basic lighting using the [phong reflection model](https://en.wikipedia.org/wiki/Phong_reflection_model) with values passed from the vertex shader. Then, to demonstrate descriptor indexing, we read from the array of textures (`Sampler2D textures[]`) using the instance index, and finally combine that with the lighting calculation. This is written to the current color attachment.
 
@@ -1108,7 +1107,7 @@ VkPipelineLayoutCreateInfo pipelineLayoutCI{
 chk(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &pipelineLayout));
 ```
 
-The [`pushConstantRange`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPushConstantRange.html) defines a range of values that we can directly push to the shader without having to go through a buffer. We use these to pass a pointer to the uniform buffer (more on that later). The descriptor set layouts (`pSetLayouts`) define the interface to the shader resources. In our case that's only one layout for passing the texture image descriptors. The call to [`vkCreatePipelineLayout`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineLayoutCreateInfo.html) will create the pipeline layout we can then use for our pipeline.
+The [`pushConstantRange`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPushConstantRange.html) defines a range of values that we can directly push to the shader without having to go through a buffer. We use these to pass a pointer to the shader data buffer buffer (more on that later). The descriptor set layouts (`pSetLayouts`) define the interface to the shader resources. In our case that's only one layout for passing the texture image descriptors. The call to [`vkCreatePipelineLayout`](https://docs.vulkan.org/refpages/latest/refpages/source/VkPipelineLayoutCreateInfo.html) will create the pipeline layout we can then use for our pipeline.
 
 Another part of our interface between the pipeline and the shader is the layout of the vertex data. In the [mesh loading chapter](#loading-meshes) we defined a basic vertex structure that we now need to specify in Vulkan terms. We use a single vertex buffer, so we require one [vertex binding point](https://docs.vulkan.org/refpages/latest/refpages/source/VkVertexInputBindingDescription.html). The `stride` matches the size of our vertex structure as our vertices are stored directly adjacent in memory. The `inputRate` is per-vertex, meaning that the data pointer advances for every vertex read:
 
@@ -1313,21 +1312,21 @@ We also pass a [semaphore](#synchronization-objects) to this function which will
 We want the next frame to use up-to-date user inputs. This is safe to do now after waiting for the fence. For that we update matrices from current data using glm:
 
 ```cpp
-uniformData.projection = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / (float)window.getSize().y, 0.1f, 32.0f);
-uniformData.view = glm::translate(glm::mat4(1.0f), camPos);
+shaderData.projection = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / (float)window.getSize().y, 0.1f, 32.0f);
+shaderData.view = glm::translate(glm::mat4(1.0f), camPos);
 for (auto i = 0; i < 3; i++) {
 	auto instancePos = glm::vec3((float)(i - 1) * 3.0f, 0.0f, 0.0f);
-	uniformData.model[i] = glm::translate(glm::mat4(1.0f), instancePos) * glm::mat4_cast(glm::quat(objectRotations[i]));
+	shaderData.model[i] = glm::translate(glm::mat4(1.0f), instancePos) * glm::mat4_cast(glm::quat(objectRotations[i]));
 }
 ```
 
-A simple `memcpy` to the uniform buffer's persistently mapped pointer is sufficient to make this available to the GPU (and with that our shader):
+A simple `memcpy` to the shader data buffer's persistently mapped pointer is sufficient to make this available to the GPU (and with that our shader):
 
 ```cpp
-memcpy(uniformBuffers[frameIndex].mapped, &mvp, sizeof(UniformData));
+memcpy(shaderDataBuffers[frameIndex].mapped, &mvp, sizeof(ShaderData));
 ```
 
-This works because the [uniform buffers](#uniform-buffers) are stored in a memory type accessible by both the CPU (for writing) and the GPU (for reading). With the preceding fence synchronization we also made sure that the CPU won't start writing to that uniform buffer before the GPU has finished reading from it.
+This works because the [shader data buffers](#shader-data-buffers) are stored in a memory type accessible by both the CPU (for writing) and the GPU (for reading). With the preceding fence synchronization we also made sure that the CPU won't start writing to that shader data buffer before the GPU has finished reading from it.
 
 ### Record command buffer
 
@@ -1472,10 +1471,10 @@ vkCmdBindVertexBuffers(cb, 0, 1, &vBuffer, &vOffset);
 vkCmdBindIndexBuffer(cb, vBuffer, vBufSize, VK_INDEX_TYPE_UINT16);
 ```
 
-We also want to access data in the [uniform buffer](#uniform-buffers). We opted for using buffer device address instead of going through descriptors, so instead we pass the address of the current frame's uniform data via a push constant to the shaders:
+We also want to access data in the [shader data buffer](#shader-data-buffer). We opted for using buffer device address instead of going through descriptors, so instead we pass the address of the current frame's shader data buffer via a push constant to the shaders:
 
 ```cpp
-vkCmdPushConstants(cb, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VkDeviceAddress), &uniformBuffers[frameIndex].deviceAddress);
+vkCmdPushConstants(cb, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VkDeviceAddress), &shaderDataBuffers[frameIndex].deviceAddress);
 ```
 
 !!! Note
@@ -1488,7 +1487,7 @@ And with that we are *finally* ready to issue an actual draw command. With all t
 vkCmdDrawIndexed(cb, indexCount, 3, 0, 0, 0);
 ```
 
-This call to [vkCmdDrawIndexed](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdDrawIndexed.html) will draw indexCount / 3 triangles from the currently bound index and vertex buffer. We also want to draw multiple instances of our 3D mesh, so we set the instance count (third argument) to 3, which we use in the [vertex shader](#the-shader) to index into the [model matrices](#uniform-buffers).
+This call to [vkCmdDrawIndexed](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdDrawIndexed.html) will draw indexCount / 3 triangles from the currently bound index and vertex buffer. We also want to draw multiple instances of our 3D mesh, so we set the instance count (third argument) to 3, which we use in the [vertex shader](#the-shader) to index into the [model matrices](#shader-data-buffers).
 
 We now [finish](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdEndRendering.html) the current render pass:
 
@@ -1496,7 +1495,7 @@ We now [finish](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdEnd
 vkCmdEndRendering(cb);
 ```
 
-And transition the swapchain image that we just used to a layout required for [presentation](#present-images):
+And transition the swapchain image that we just used as an attachment (to output color values) to a layout required for [presentation](#present-image):
 
 ```cpp
 VkImageMemoryBarrier2 barrierPresent{
@@ -1505,7 +1504,7 @@ VkImageMemoryBarrier2 barrierPresent{
 	.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 	.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 	.dstAccessMask = 0,
-	.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+	.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 	.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 	.image = swapchainImages[imageIndex],
 	.subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1 }
@@ -1597,8 +1596,8 @@ while (const std::optional event = window.pollEvent()) {
 	if (const auto* mouseMoved = event->getIf<sf::Event::MouseMoved>()) {
 		if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
 			auto delta = lastMousePos - mouseMoved->position;
-			objectRotations[uniformData.selected].x += (float)delta.y * 0.0005f * (float)elapsed.asMilliseconds();
-			objectRotations[uniformData.selected].y -= (float)delta.x * 0.0005f * (float)elapsed.asMilliseconds();
+			objectRotations[shaderData.selected].x += (float)delta.y * 0.0005f * (float)elapsed.asMilliseconds();
+			objectRotations[shaderData.selected].y -= (float)delta.x * 0.0005f * (float)elapsed.asMilliseconds();
 		}
 		lastMousePos = mouseMoved->position;
 	}
@@ -1611,10 +1610,10 @@ while (const std::optional event = window.pollEvent()) {
 	// Select active model instance
 	if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
 		if (keyPressed->code == sf::Keyboard::Key::Add) {
-			uniformData.selected = (uniformData.selected < 2) ? uniformData.selected + 1 : 0;
+			shaderData.selected = (shaderData.selected < 2) ? shaderData.selected + 1 : 0;
 		}
 		if (keyPressed->code == sf::Keyboard::Key::Subtract) {
-			uniformData.selected = (uniformData.selected > 0) ? uniformData.selected - 1 : 2;
+			shaderData.selected = (shaderData.selected > 0) ? shaderData.selected - 1 : 2;
 		}
 	}	
 

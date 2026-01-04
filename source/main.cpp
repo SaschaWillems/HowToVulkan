@@ -61,20 +61,20 @@ std::array<VkSemaphore, maxFramesInFlight> presentSemaphores;
 std::vector<VkSemaphore> renderSemaphores;
 VmaAllocation vBufferAllocation{ VK_NULL_HANDLE };
 VkBuffer vBuffer{ VK_NULL_HANDLE };
-struct UniformData {
+struct ShaderData {
 	glm::mat4 projection;
 	glm::mat4 view;
 	glm::mat4 model[3];
 	glm::vec4 lightPos{ 0.0f, -10.0f, 10.0f, 0.0f };
 	uint32_t selected{1};
-} uniformData{};
-struct UniformBuffers {
+} shaderData{};
+struct ShaderDataBuffer {
 	VmaAllocation allocation{ VK_NULL_HANDLE };
 	VkBuffer buffer{ VK_NULL_HANDLE };
 	VkDeviceAddress deviceAddress{};
 	void* mapped{ nullptr };
 };
-std::array<UniformBuffers, maxFramesInFlight> uniformBuffers;
+std::array<ShaderDataBuffer, maxFramesInFlight> shaderDataBuffers;
 struct Texture {
 	VmaAllocation allocation{ VK_NULL_HANDLE };
 	VkImage image{ VK_NULL_HANDLE };	
@@ -225,14 +225,14 @@ int main()
 	memcpy(bufferPtr, vertices.data(), vBufSize);
 	memcpy(((char*)bufferPtr) + vBufSize, indices.data(), iBufSize);
 	vmaUnmapMemory(allocator, vBufferAllocation);
-	// Uniform buffers
+	// Shader data buffers
 	for (auto i = 0; i < maxFramesInFlight; i++) {
-		VkBufferCreateInfo uBufferCI{ .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = sizeof(UniformData), .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT };
+		VkBufferCreateInfo uBufferCI{ .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = sizeof(ShaderData), .usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT };
 		VmaAllocationCreateInfo uBufferAllocCI{ .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
-		chk(vmaCreateBuffer(allocator, &uBufferCI, &uBufferAllocCI, &uniformBuffers[i].buffer, &uniformBuffers[i].allocation, nullptr));
-		vmaMapMemory(allocator, uniformBuffers[i].allocation, &uniformBuffers[i].mapped);
-		VkBufferDeviceAddressInfo uBufferBdaInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = uniformBuffers[i].buffer };
-		uniformBuffers[i].deviceAddress = vkGetBufferDeviceAddress(device, &uBufferBdaInfo);
+		chk(vmaCreateBuffer(allocator, &uBufferCI, &uBufferAllocCI, &shaderDataBuffers[i].buffer, &shaderDataBuffers[i].allocation, nullptr));
+		vmaMapMemory(allocator, shaderDataBuffers[i].allocation, &shaderDataBuffers[i].mapped);
+		VkBufferDeviceAddressInfo uBufferBdaInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = shaderDataBuffers[i].buffer };
+		shaderDataBuffers[i].deviceAddress = vkGetBufferDeviceAddress(device, &uBufferBdaInfo);
 	}
 	// Sync objects
 	VkSemaphoreCreateInfo semaphoreCI{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
@@ -430,14 +430,14 @@ int main()
 		chk(vkWaitForFences(device, 1, &fences[frameIndex], true, UINT64_MAX));
 		chk(vkResetFences(device, 1, &fences[frameIndex]));
 		vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex);
-		// Update uniform data
-		uniformData.projection = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / (float)window.getSize().y, 0.1f, 32.0f);
-		uniformData.view = glm::translate(glm::mat4(1.0f), camPos);
+		// Update shader data
+		shaderData.projection = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / (float)window.getSize().y, 0.1f, 32.0f);
+		shaderData.view = glm::translate(glm::mat4(1.0f), camPos);
 		for (auto i = 0; i < 3; i++) {
 			auto instancePos = glm::vec3((float)(i - 1) * 3.0f, 0.0f, 0.0f);
-			uniformData.model[i] = glm::translate(glm::mat4(1.0f), instancePos) * glm::mat4_cast(glm::quat(objectRotations[i]));
+			shaderData.model[i] = glm::translate(glm::mat4(1.0f), instancePos) * glm::mat4_cast(glm::quat(objectRotations[i]));
 		}		
-		memcpy(uniformBuffers[frameIndex].mapped, &uniformData, sizeof(UniformData));
+		memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
 		// Build command buffer
 		auto cb = commandBuffers[frameIndex];
 		vkResetCommandBuffer(cb, 0);
@@ -503,7 +503,7 @@ int main()
 		VkDeviceSize vOffset{ 0 };
 		vkCmdBindVertexBuffers(cb, 0, 1, &vBuffer, &vOffset);
 		vkCmdBindIndexBuffer(cb, vBuffer, vBufSize, VK_INDEX_TYPE_UINT16);
-		vkCmdPushConstants(cb, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VkDeviceAddress), &uniformBuffers[frameIndex].deviceAddress);
+		vkCmdPushConstants(cb, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VkDeviceAddress), &shaderDataBuffers[frameIndex].deviceAddress);
 		vkCmdDrawIndexed(cb, indexCount, 3, 0, 0, 0);
 		vkCmdEndRendering(cb);
 		VkImageMemoryBarrier2 barrierPresent{
@@ -512,7 +512,7 @@ int main()
 			.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 			.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 			.dstAccessMask = 0,
-			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 			.image = swapchainImages[imageIndex],
 			.subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = 1, .layerCount = 1 }
@@ -552,8 +552,8 @@ int main()
 			if (const auto* mouseMoved = event->getIf<sf::Event::MouseMoved>()) {
 				if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
 					auto delta = lastMousePos - mouseMoved->position;
-					objectRotations[uniformData.selected].x += (float)delta.y * 0.0005f * (float)elapsed.asMilliseconds();
-					objectRotations[uniformData.selected].y -= (float)delta.x * 0.0005f * (float)elapsed.asMilliseconds();
+					objectRotations[shaderData.selected].x += (float)delta.y * 0.0005f * (float)elapsed.asMilliseconds();
+					objectRotations[shaderData.selected].y -= (float)delta.x * 0.0005f * (float)elapsed.asMilliseconds();
 				}
 				lastMousePos = mouseMoved->position;
 			}
@@ -562,10 +562,10 @@ int main()
 			}
 			if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
 				if (keyPressed->code == sf::Keyboard::Key::Add) {
-					uniformData.selected = (uniformData.selected < 2) ? uniformData.selected + 1 : 0;
+					shaderData.selected = (shaderData.selected < 2) ? shaderData.selected + 1 : 0;
 				}
 				if (keyPressed->code == sf::Keyboard::Key::Subtract) {
-					uniformData.selected = (uniformData.selected > 0) ? uniformData.selected - 1 : 2;
+					shaderData.selected = (shaderData.selected > 0) ? shaderData.selected - 1 : 2;
 				}
 			}
 			// Window resize
@@ -602,8 +602,8 @@ int main()
 		vkDestroyFence(device, fences[i], nullptr);
 		vkDestroySemaphore(device, presentSemaphores[i], nullptr);
 		vkDestroySemaphore(device, renderSemaphores[i], nullptr);
-		vmaUnmapMemory(allocator, uniformBuffers[i].allocation);
-		vmaDestroyBuffer(allocator, uniformBuffers[i].buffer, uniformBuffers[i].allocation);
+		vmaUnmapMemory(allocator, shaderDataBuffers[i].allocation);
+		vmaDestroyBuffer(allocator, shaderDataBuffers[i].buffer, shaderDataBuffers[i].allocation);
 	}
 	vmaDestroyImage(allocator, depthImage, depthImageAllocation);
 	vkDestroyImageView(device, depthImageView, nullptr);
