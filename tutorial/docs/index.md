@@ -1142,7 +1142,7 @@ VkPipelineVertexInputStateCreateInfo vertexInputState{
 	.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 	.vertexBindingDescriptionCount = 1,
 	.pVertexBindingDescriptions = &vertexBinding,
-	.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributes.size()),,
+	.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributes.size()),
 	.pVertexAttributeDescriptions = vertexAttributes.data(),
 };
 ```
