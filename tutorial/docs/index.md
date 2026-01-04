@@ -1200,7 +1200,7 @@ VkPipelineDepthStencilStateCreateInfo depthStencilState{
 };
 ```
 
-The following state tells the pipeline that we want to use dynamic rendering instead of the cumbersome render pass objects. Unlike render passes, setting this up is fairly trivial and also removes a tight coupling between the pipeline and a render pass. For dynamic rendering we just have to specify the number and formats our the attachments we plan to use (later on):
+The following state tells the pipeline that we want to use dynamic rendering instead of the cumbersome render pass objects. Unlike render passes, setting this up is fairly trivial and also removes a tight coupling between the pipeline and a render pass. For dynamic rendering we just have to specify the number and formats of the attachments we plan to use (later on):
 
 ```cpp
 VkPipelineRenderingCreateInfo renderingCI{
