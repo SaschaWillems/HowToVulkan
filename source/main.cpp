@@ -28,7 +28,9 @@
 static inline void chk(VkResult result) {
 	if (result != VK_SUCCESS) {
 		std::cerr << "Vulkan call returned an error (" << result << ")\n";
-		exit(result);
+        if (result < VK_SUCCESS){
+            exit(result);
+        }
 	}
 }
 static inline void chk(bool result) {
@@ -429,7 +431,7 @@ int main()
 		// Sync
 		chk(vkWaitForFences(device, 1, &fences[frameIndex], true, UINT64_MAX));
 		chk(vkResetFences(device, 1, &fences[frameIndex]));
-		vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex);
+		chk(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex));
 		// Update shader data
 		shaderData.projection = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / (float)window.getSize().y, 0.1f, 32.0f);
 		shaderData.view = glm::translate(glm::mat4(1.0f), camPos);
