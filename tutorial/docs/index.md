@@ -609,10 +609,10 @@ Another area where Vulkan is very explicit is [synchronization](https://docs.vul
 We'll be using different means of synchronization during this tutorial:
 
 * [Fences](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-fences) are used to signal work completion from GPU to CPU. We use them when we need to make sure that a resource used by both GPU and CPU is free to be modified on the CPU.
-* [Semaphores](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-semaphores) are used to control access to resources on the GPU-side (only). We use them to ensure proper ordering for things like presentation.
+* [Binary Semaphores](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-semaphores) are used to control access to resources on the GPU-side (only). We use them to ensure proper ordering for things like presentation.
 * [Pipeline barriers](https://docs.vulkan.org/spec/latest/chapters/synchronization.html#synchronization-pipeline-barriers) are used to control resource access within a GPU queue. We use them for layout transitions of images.
 
-Fences and semaphores are objects that we have to create and store, barriers instead are issued as commands and will be discussed later:
+Fences and binary semaphores are objects that we have to create and store, barriers instead are issued as commands and will be discussed later:
 
 ```cpp
 VkSemaphoreCreateInfo semaphoreCI{
