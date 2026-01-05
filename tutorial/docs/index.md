@@ -416,7 +416,7 @@ With both the image and the image view created, our depth attachment is now read
 
 ## Loading meshes
 
-From Vulkan's perspective there is no technical difference between drawing a single triangle or a complex mesh with thousands of triangles. Both result in some sort of buffer that the GPU will read data from. The GPU does not care where that data comes from. But from a learning experience it's much better to load an actual 3D object instead of displaying a triangle from hardcoded vertex data. That's our next step.
+From Vulkan's perspective there is no technical difference between drawing a single triangle or a complex mesh with thousands of triangles. Both result in some sort of buffer that the GPU will read data from. The GPU does not care where that data comes from.  We could start by displaying a single triangle with hardcoded vertex data but for a learning experience it's much better to load an actual 3D object instead. That's our next step.
 
 There are plenty of formats around for storing 3D models. [glTF](https://www.khronos.org/Gltf) for example offers a lot of features and is extensible in a way similar to Vulkan. But we want to keep things simple, so we'll be using the [Wavefront .obj format](https://en.wikipedia.org/wiki/Wavefront_.obj_file) instead. As far as 3D formats go, it won't get more plain than this. And it's supported by many tools like [Blender](https://www.blender.org/).
 
