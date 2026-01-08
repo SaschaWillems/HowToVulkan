@@ -1325,7 +1325,7 @@ for (auto i = 0; i < 3; i++) {
 A simple `memcpy` to the shader data buffer's persistently mapped pointer is sufficient to make this available to the GPU (and with that our shader):
 
 ```cpp
-memcpy(shaderDataBuffers[frameIndex].mapped, &mvp, sizeof(ShaderData));
+memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
 ```
 
 This works because the [shader data buffers](#shader-data-buffers) are stored in a memory type accessible by both the CPU (for writing) and the GPU (for reading). With the preceding fence synchronization we also made sure that the CPU won't start writing to that shader data buffer before the GPU has finished reading from it.
