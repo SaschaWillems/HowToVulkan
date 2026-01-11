@@ -28,7 +28,9 @@
 static inline void chk(VkResult result) {
 	if (result != VK_SUCCESS) {
 		std::cerr << "Vulkan call returned an error (" << result << ")\n";
-		exit(result);
+        if (result < VK_SUCCESS){
+            exit(result);
+        }
 	}
 }
 static inline void chk(bool result) {
@@ -77,7 +79,7 @@ struct ShaderDataBuffer {
 std::array<ShaderDataBuffer, maxFramesInFlight> shaderDataBuffers;
 struct Texture {
 	VmaAllocation allocation{ VK_NULL_HANDLE };
-	VkImage image{ VK_NULL_HANDLE };	
+	VkImage image{ VK_NULL_HANDLE };
 	VkImageView view{ VK_NULL_HANDLE };
 	VkSampler sampler{ VK_NULL_HANDLE };
 };
@@ -217,7 +219,7 @@ int main(int argc, char* argv[])
 		Vertex v{
 			.pos = { attrib.vertices[index.vertex_index * 3], -attrib.vertices[index.vertex_index * 3 + 1], attrib.vertices[index.vertex_index * 3 + 2] },
 			.normal = { attrib.normals[index.normal_index * 3], -attrib.normals[index.normal_index * 3 + 1], attrib.normals[index.normal_index * 3 + 2] },
-			.uv = { attrib.texcoords[index.texcoord_index * 2], 1.0 - attrib.texcoords[index.texcoord_index * 2 + 1] } 
+			.uv = { attrib.texcoords[index.texcoord_index * 2], 1.0 - attrib.texcoords[index.texcoord_index * 2 + 1] }
 		};
 		vertices.push_back(v);
 		indices.push_back(indices.size());
@@ -436,14 +438,14 @@ int main(int argc, char* argv[])
 		// Sync
 		chk(vkWaitForFences(device, 1, &fences[frameIndex], true, UINT64_MAX));
 		chk(vkResetFences(device, 1, &fences[frameIndex]));
-		vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex);
+		chk(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex));
 		// Update shader data
 		shaderData.projection = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / (float)window.getSize().y, 0.1f, 32.0f);
 		shaderData.view = glm::translate(glm::mat4(1.0f), camPos);
 		for (auto i = 0; i < 3; i++) {
 			auto instancePos = glm::vec3((float)(i - 1) * 3.0f, 0.0f, 0.0f);
 			shaderData.model[i] = glm::translate(glm::mat4(1.0f), instancePos) * glm::mat4_cast(glm::quat(objectRotations[i]));
-		}		
+		}
 		memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
 		// Build command buffer
 		auto cb = commandBuffers[frameIndex];

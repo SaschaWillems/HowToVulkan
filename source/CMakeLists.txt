@@ -26,6 +26,16 @@ FetchContent_Declare(SFML
     GIT_SHALLOW ON)
 FetchContent_MakeAvailable(SFML)
 
+if (NOT WIN32)
+    FetchContent_Declare(GLM
+        GIT_REPOSITORY https://github.com/g-truc/glm
+        GIT_TAG 1.0
+        GIT_SHALLOW ON
+        EXCLUDE_FROM_ALL
+        SYSTEM)
+    FetchContent_MakeAvailable(GLM)
+endif()
+
 OPTION(USE_D2D_WSI "Build the project using Direct to Display swapchain" OFF)
 OPTION(USE_WAYLAND_WSI "Build the project using Wayland swapchain" OFF)
 
@@ -40,6 +50,9 @@ set(KTX_SOURCES
     ${KTX_DIR}/lib/vkloader.c)
 
 add_library(ktx STATIC ${KTX_SOURCES})
+if (NOT WIN32)
+    target_link_libraries(ktx PUBLIC $ENV{VULKAN_SDK}/lib/libvulkan.so)
+endif()
 
 find_library(Slang_LIBRARY NAMES slang HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
 
@@ -55,7 +68,13 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/")
 
 add_executable(${NAME} main.cpp assets/shader.slang)
-add_definitions(-D_CRT_SECURE_NO_WARNINGS -DVK_NO_PROTOTYPES)
+target_compile_definitions(${NAME} PRIVATE VK_NO_PROTOTYPES)
+if (WIN32)
+    target_compile_definitions(${NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
 set_target_properties(${NAME} PROPERTIES DEBUGGER_WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(${NAME} PRIVATE cxx_std_20)
 target_link_libraries(${NAME} PRIVATE SFML::Graphics ktx ${Slang_LIBRARY})
+if (NOT WIN32)
+    target_link_libraries(${NAME} PRIVATE glm::glm-header-only)
+endif()
