@@ -50,7 +50,9 @@ set(KTX_SOURCES
     ${KTX_DIR}/lib/vkloader.c)
 
 add_library(ktx STATIC ${KTX_SOURCES})
-if (NOT WIN32)
+if(APPLE)
+    target_link_libraries(ktx PUBLIC "$ENV{VULKAN_SDK}/lib/libvulkan.dylib")
+elseif (NOT WIN32)
     target_link_libraries(ktx PUBLIC $ENV{VULKAN_SDK}/lib/libvulkan.so)
 endif()
 
