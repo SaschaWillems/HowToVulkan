@@ -2,10 +2,12 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <SFML/Graphics.hpp>
 #include <vulkan/vulkan.h>
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 #define VOLK_IMPLEMENTATION
 #include <volk/volk.h>
+#include <algorithm>
 #include <vector>
 #include <array>
 #include <string>
@@ -76,7 +78,11 @@ VkDescriptorSet descriptorSetTex{ VK_NULL_HANDLE };
 Slang::ComPtr<slang::IGlobalSession> slangGlobalSession;
 glm::vec3 camPos{ 0.0f, 0.0f, -6.0f };
 glm::vec3 objectRotations[3]{};
-sf::Vector2i lastMousePos{};
+double lastMouseX{ 0.0 };
+double lastMouseY{ 0.0 };
+bool lastMousePosInitialized{ false };
+double scrollAccumY{ 0.0 };
+
 struct Vertex {
 	glm::vec3 pos;
 	glm::vec3 normal;
@@ -111,10 +117,18 @@ static inline void chkSwapchain(VkResult result) {
 
 int main(int argc, char* argv[])
 {
+	glfwInit();
+	chk(glfwVulkanSupported());
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
 	volkInitialize();
 	// Instance
 	VkApplicationInfo appInfo{ .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "How to Vulkan", .apiVersion = VK_API_VERSION_1_3 };
-	const std::vector<const char*> instanceExtensions{ sf::Vulkan::getGraphicsRequiredInstanceExtensions() };
+	uint32_t glfwExtCount = 0;
+	const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtCount);
+	chk(glfwExtCount > 0);
+	chk(glfwExtensions != nullptr);
+	std::vector<const char*> instanceExtensions(glfwExtensions, glfwExtensions + glfwExtCount);
 	VkInstanceCreateInfo instanceCI{
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 		.pApplicationInfo = &appInfo,
@@ -171,8 +185,23 @@ int main(int argc, char* argv[])
 	VmaAllocatorCreateInfo allocatorCI{ .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT, .physicalDevice = devices[deviceIndex], .device = device, .pVulkanFunctions = &vkFunctions, .instance = instance };
 	chk(vmaCreateAllocator(&allocatorCI, &allocator));
 	// Window and surface
-	auto window = sf::RenderWindow(sf::VideoMode({ 1280, 720u }), "How to Vulkan");
-	chk(window.createVulkanSurface(instance, surface));
+	auto window = std::unique_ptr<GLFWwindow, void (*)(GLFWwindow*)>(
+		glfwCreateWindow(1280, 720, "How to Vulkan", nullptr, nullptr), glfwDestroyWindow);
+	chk(glfwCreateWindowSurface(instance, window.get(), nullptr, &surface));
+	glfwSetScrollCallback(window.get(), [](GLFWwindow* /*window*/, double /*xoffset*/,
+											double yoffset) { scrollAccumY += yoffset; });
+	glfwSetCharCallback(window.get(), [](GLFWwindow* /*window*/, unsigned int codepoint) {
+		if (codepoint == '+') {
+			shaderData.selected++;
+		} else if (codepoint == '-') {
+			shaderData.selected--;
+		}
+		shaderData.selected = (shaderData.selected + 3) % 3;
+	});
+	glfwSetFramebufferSizeCallback(window.get(), [](GLFWwindow* /*window*/, int /*width*/, int /*height*/) {
+		updateSwapchain = true;
+	});
+
 	VkSurfaceCapabilitiesKHR surfaceCaps{};
 	chk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(devices[deviceIndex], surface, &surfaceCaps));
 	// Swap chain
@@ -201,6 +230,10 @@ int main(int argc, char* argv[])
 		chk(vkCreateImageView(device, &viewCI, nullptr, &swapchainImageViews[i]));
 	}
 	// Depth attachment
+	int windowWidth = 0;
+	int windowHeight = 0;
+	glfwGetFramebufferSize(window.get(), &windowWidth, &windowHeight);
+
 	std::vector<VkFormat> depthFormatList{ VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT };
 	VkFormat depthFormat{ VK_FORMAT_UNDEFINED };
 	for (VkFormat& format : depthFormatList) {
@@ -216,7 +249,7 @@ int main(int argc, char* argv[])
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.imageType = VK_IMAGE_TYPE_2D,
 		.format = depthFormat,
-		.extent{.width = window.getSize().x, .height = window.getSize().y, .depth = 1 },
+		.extent{.width = static_cast<uint32_t>(windowWidth), .height = static_cast<uint32_t>(windowHeight), .depth = 1 },
 		.mipLevels = 1,
 		.arrayLayers = 1,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
@@ -455,14 +488,44 @@ int main(int argc, char* argv[])
 	};
 	chk(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCI, nullptr, &pipeline));
 	// Render loop
-	sf::Clock clock;
-	while (window.isOpen()) {
+	double prevTime = glfwGetTime();
+	while (glfwWindowShouldClose(window.get()) == GLFW_FALSE) {
+		glfwPollEvents();
+		double curTime = glfwGetTime();
+		double dtMs = (curTime - prevTime) * 1000.0;
+		prevTime = curTime;
+
+		int windowWidth = 0;
+		int windowHeight = 0;
+		glfwGetFramebufferSize(window.get(), &windowWidth, &windowHeight);
+
+		// Input logic
+		double curX = 0;
+		double curY = 0;
+		glfwGetCursorPos(window.get(), &curX, &curY);
+		if (!lastMousePosInitialized) {
+			lastMouseX = curX; lastMouseY = curY; lastMousePosInitialized = true;
+		}
+		if (glfwGetMouseButton(window.get(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+			double dx = lastMouseX - curX;
+			double dy = lastMouseY - curY;
+			objectRotations[shaderData.selected].x += (float)dy * 0.0005f * (float)dtMs;
+			objectRotations[shaderData.selected].y -= (float)dx * 0.0005f * (float)dtMs;
+		}
+		lastMouseX = curX;
+		lastMouseY = curY;
+
+		if (scrollAccumY != 0.0) {
+			camPos.z += (float)scrollAccumY * 0.025f * (float)dtMs;
+			scrollAccumY = 0.0;
+		}
+
 		// Sync
 		chk(vkWaitForFences(device, 1, &fences[frameIndex], true, UINT64_MAX));
 		chk(vkResetFences(device, 1, &fences[frameIndex]));
 		chkSwapchain(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, presentSemaphores[frameIndex], VK_NULL_HANDLE, &imageIndex));
 		// Update shader data
-		shaderData.projection = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / (float)window.getSize().y, 0.1f, 32.0f);
+		shaderData.projection = glm::perspective(glm::radians(45.0f), (float)windowWidth / (float)windowHeight, 0.1f, 32.0f);
 		shaderData.view = glm::translate(glm::mat4(1.0f), camPos);
 		for (auto i = 0; i < 3; i++) {
 			auto instancePos = glm::vec3((float)(i - 1) * 3.0f, 0.0f, 0.0f);
@@ -518,16 +581,16 @@ int main(int argc, char* argv[])
 		};
 		VkRenderingInfo renderingInfo{
 			.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-			.renderArea{.extent{.width = window.getSize().x, .height = window.getSize().y }},
+			.renderArea{.extent{.width = static_cast<uint32_t>(windowWidth), .height = static_cast<uint32_t>(windowHeight) }},
 			.layerCount = 1,
 			.colorAttachmentCount = 1,
 			.pColorAttachments = &colorAttachmentInfo,
 			.pDepthAttachment = &depthAttachmentInfo
 		};
 		vkCmdBeginRendering(cb, &renderingInfo);
-		VkViewport vp{ .width = static_cast<float>(window.getSize().x), .height = static_cast<float>(window.getSize().y), .minDepth = 0.0f, .maxDepth = 1.0f};
+		VkViewport vp{ .width = static_cast<float>(windowWidth), .height = static_cast<float>(windowHeight), .minDepth = 0.0f, .maxDepth = 1.0f};
 		vkCmdSetViewport(cb, 0, 1, &vp);
-		VkRect2D scissor{ .extent{ .width = window.getSize().x, .height = window.getSize().y } };
+		VkRect2D scissor{ .extent{ .width = static_cast<uint32_t>(windowWidth), .height = static_cast<uint32_t>(windowHeight) } };
 		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 		vkCmdSetScissor(cb, 0, 1, &scissor);
 		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSetTex, 0, nullptr);
@@ -574,42 +637,15 @@ int main(int argc, char* argv[])
 			.pImageIndices = &imageIndex
 		};
 		chkSwapchain(vkQueuePresentKHR(queue, &presentInfo));
-		// Event polling
-		sf::Time elapsed = clock.restart();
-		while (const std::optional event = window.pollEvent()) {
-			if (event->is<sf::Event::Closed>()) {
-				window.close();
-			}
-			if (const auto* mouseMoved = event->getIf<sf::Event::MouseMoved>()) {
-				if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left)) {
-					auto delta = lastMousePos - mouseMoved->position;
-					objectRotations[shaderData.selected].x += (float)delta.y * 0.0005f * (float)elapsed.asMilliseconds();
-					objectRotations[shaderData.selected].y -= (float)delta.x * 0.0005f * (float)elapsed.asMilliseconds();
-				}
-				lastMousePos = mouseMoved->position;
-			}
-			if (const auto* mouseWheelScrolled = event->getIf<sf::Event::MouseWheelScrolled>()) {
-				camPos.z += (float)mouseWheelScrolled->delta * 0.025f * (float)elapsed.asMilliseconds();
-			}
-			if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
-				if (keyPressed->code == sf::Keyboard::Key::Add) {
-					shaderData.selected = (shaderData.selected < 2) ? shaderData.selected + 1 : 0;
-				}
-				if (keyPressed->code == sf::Keyboard::Key::Subtract) {
-					shaderData.selected = (shaderData.selected > 0) ? shaderData.selected - 1 : 2;
-				}
-			}
-			// Window resize
-			if (event->getIf<sf::Event::Resized>()) {
-				updateSwapchain = true;
-			}
-		}
 		if (updateSwapchain) {
 			updateSwapchain = false;
 			chk(vkDeviceWaitIdle(device));
 			chk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(devices[deviceIndex], surface, &surfaceCaps));
 			swapchainCI.oldSwapchain = swapchain;
-			swapchainCI.imageExtent = { .width = static_cast<uint32_t>(window.getSize().x), .height = static_cast<uint32_t>(window.getSize().y)};
+			int w = 0;
+			int h = 0;
+			glfwGetFramebufferSize(window.get(), &w, &h);
+			swapchainCI.imageExtent = { .width = static_cast<uint32_t>(w), .height = static_cast<uint32_t>(h)};
 			chk(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &swapchain));
 			for (auto i = 0; i < imageCount; i++) {
 				vkDestroyImageView(device, swapchainImageViews[i], nullptr);
@@ -625,7 +661,7 @@ int main(int argc, char* argv[])
 			vkDestroySwapchainKHR(device, swapchainCI.oldSwapchain, nullptr);
 			vmaDestroyImage(allocator, depthImage, depthImageAllocation);
 			vkDestroyImageView(device, depthImageView, nullptr);
-			depthImageCI.extent = { .width = static_cast<uint32_t>(window.getSize().x), .height = static_cast<uint32_t>(window.getSize().y), .depth = 1 };
+			depthImageCI.extent = { .width = static_cast<uint32_t>(w), .height = static_cast<uint32_t>(h), .depth = 1 };
 			VmaAllocationCreateInfo allocCI{ .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
 			chk(vmaCreateImage(allocator, &depthImageCI, &allocCI, &depthImage, &depthImageAllocation, nullptr));
 			VkImageViewCreateInfo viewCI{ .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = depthImage, .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = depthFormat, .subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT, .levelCount = 1, .layerCount = 1 } };
@@ -665,4 +701,7 @@ int main(int argc, char* argv[])
 	vmaDestroyAllocator(allocator);
 	vkDestroyDevice(device, nullptr);
 	vkDestroyInstance(instance, nullptr);
+
+	glfwTerminate();
+	return 0;
 }
