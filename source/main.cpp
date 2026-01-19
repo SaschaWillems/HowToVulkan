@@ -129,8 +129,22 @@ int main(int argc, char* argv[])
 	chk(glfwExtCount > 0);
 	chk(glfwExtensions != nullptr);
 	std::vector<const char*> instanceExtensions(glfwExtensions, glfwExtensions + glfwExtCount);
+	// For MoltenVK (macOS): add VK_KHR_portability_enumeration if available
+	// No longer needed if using KosmicKrisp in recent Mac Vulkan SDKs
+	uint32_t extCount = 0;
+	chk(vkEnumerateInstanceExtensionProperties(nullptr, &extCount, nullptr));
+	std::vector<VkExtensionProperties> availableExtensions(extCount);
+	chk(vkEnumerateInstanceExtensionProperties(nullptr, &extCount, availableExtensions.data()));
+	const bool portabilityEnumerationFound = std::ranges::find(
+		availableExtensions, std::string_view(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME),
+		&VkExtensionProperties::extensionName) != availableExtensions.end();
+	if (portabilityEnumerationFound) {
+		instanceExtensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+	}
 	VkInstanceCreateInfo instanceCI{
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.flags = portabilityEnumerationFound ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR
+												: VkInstanceCreateFlags{},
 		.pApplicationInfo = &appInfo,
 		.enabledExtensionCount = static_cast<uint32_t>(instanceExtensions.size()),
 		.ppEnabledExtensionNames = instanceExtensions.data(),
