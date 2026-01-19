@@ -10,7 +10,7 @@
 #include <array>
 #include <string>
 #include <iostream>
-#include <fstream>
+#include <source_location>
 #define VMA_IMPLEMENTATION
 #include <vma/vk_mem_alloc.h>
 #define GLM_FORCE_RADIANS
@@ -83,12 +83,21 @@ struct Vertex {
 	glm::vec2 uv;
 };
 
-static inline void chk(VkResult result) {
+static inline void chk_impl(VkResult result, const char* text, std::source_location loc) {
 	if (result != VK_SUCCESS) {
-		std::cerr << "Vulkan call returned an error (" << result << ")\n";
+		std::cerr << "Vulkan call failed in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line()
+				<< "\n  Expression: " << text << "\n  Result: " << result << "\n";
 		exit(result);
 	}
 }
+static inline void chk_impl(bool success, const char* text, std::source_location loc) {
+	if (!success) {
+		std::cerr << "Check failed in " << loc.function_name() << " at " << loc.file_name() << ":" << loc.line()
+				<< "\n  Expression: " << text << "\n";
+		exit(-1);
+	}
+}
+#define chk(...) chk_impl(__VA_ARGS__, #__VA_ARGS__, std::source_location::current())
 static inline void chkSwapchain(VkResult result) {
 	if (result < VK_SUCCESS) {
 		if (result == VK_ERROR_OUT_OF_DATE_KHR) {
@@ -96,12 +105,6 @@ static inline void chkSwapchain(VkResult result) {
 			return;
 		}
 		std::cerr << "Vulkan call returned an error (" << result << ")\n";
-		exit(result);
-	}
-}
-static inline void chk(bool result) {
-	if (!result) {
-		std::cerr << "Call returned an error\n";
 		exit(result);
 	}
 }
