@@ -254,6 +254,7 @@ Using Vulkan 1.3 as a baseline, we can use the features mentioned [earlier on](#
 VkPhysicalDeviceVulkan12Features enabledVk12Features{
 	.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
 	.descriptorIndexing = true,
+	.shaderSampledImageArrayNonUniformIndexing = true,
 	.descriptorBindingVariableDescriptorCount = true,
 	.runtimeDescriptorArray = true,
 	.bufferDeviceAddress = true
@@ -269,7 +270,7 @@ const VkPhysicalDeviceFeatures enabledVk10Features{
 };
 ```
 
-`descriptorBindingVariableDescriptorCount` and `runtimeDescriptorArray` are related to descriptor indexing, the rest of the names match the actual feature. We also enable [anisotropic filtering](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceFeatures.html#_members) for better texture filtering.
+`shaderSampledImageArrayNonUniformIndexing`, `descriptorBindingVariableDescriptorCount` and `runtimeDescriptorArray` are related to descriptor indexing, the rest of the names match the actual feature. We also enable [anisotropic filtering](https://docs.vulkan.org/refpages/latest/refpages/source/VkPhysicalDeviceFeatures.html#_members) for better texture filtering.
 
 !!! Info
 
@@ -1121,7 +1122,7 @@ float4 main(VSOutput input) {
     float3 diffuse = max(dot(N, L), 0.0025);
     float3 specular = pow(max(dot(R, V), 0.0), 16.0) * 0.75;
     // Sample from texture
-    float3 color = textures[input.InstanceIndex].Sample(input.UV).rgb * input.Factor;
+    float3 color = textures[NonUniformResourceIndex(input.InstanceIndex)].Sample(input.UV).rgb * input.Factor;
     return float4(diffuse * color.rgb + specular, 1.0);
 }
 ```
