@@ -59,9 +59,9 @@ struct ShaderData {
 } shaderData{};
 struct ShaderDataBuffer {
 	VmaAllocation allocation{ VK_NULL_HANDLE };
+	VmaAllocationInfo allocationInfo{};
 	VkBuffer buffer{ VK_NULL_HANDLE };
 	VkDeviceAddress deviceAddress{};
-	void* mapped{ nullptr };
 };
 std::array<ShaderDataBuffer, maxFramesInFlight> shaderDataBuffers;
 struct Texture {
@@ -247,19 +247,16 @@ int main(int argc, char* argv[])
 	VkDeviceSize vBufSize{ sizeof(Vertex) * vertices.size() };
 	VkDeviceSize iBufSize{ sizeof(uint16_t) * indices.size() };
 	VkBufferCreateInfo bufferCI{ .size = vBufSize + iBufSize, .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT };
-	VmaAllocationCreateInfo bufferAllocCI{ .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
-	chk(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &vBuffer, &vBufferAllocation, nullptr));
-	void* bufferPtr{ nullptr };
-	chk(vmaMapMemory(allocator, vBufferAllocation, &bufferPtr));
-	memcpy(bufferPtr, vertices.data(), vBufSize);
-	memcpy(((char*)bufferPtr) + vBufSize, indices.data(), iBufSize);
-	vmaUnmapMemory(allocator, vBufferAllocation);
+	VmaAllocationCreateInfo vBufferAllocCI{ .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
+	VmaAllocationInfo vBufferAllocInfo{};
+	chk(vmaCreateBuffer(allocator, &bufferCI, &vBufferAllocCI, &vBuffer, &vBufferAllocation, &vBufferAllocInfo));
+	memcpy(vBufferAllocInfo.pMappedData, vertices.data(), vBufSize);
+	memcpy(((char*)vBufferAllocInfo.pMappedData) + vBufSize, indices.data(), iBufSize);
 	// Shader data buffers
 	for (auto i = 0; i < maxFramesInFlight; i++) {
 		VkBufferCreateInfo uBufferCI{ .size = sizeof(ShaderData), .usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT };
 		VmaAllocationCreateInfo uBufferAllocCI{ .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
-		chk(vmaCreateBuffer(allocator, &uBufferCI, &uBufferAllocCI, &shaderDataBuffers[i].buffer, &shaderDataBuffers[i].allocation, nullptr));
-		chk(vmaMapMemory(allocator, shaderDataBuffers[i].allocation, &shaderDataBuffers[i].mapped));
+		chk(vmaCreateBuffer(allocator, &uBufferCI, &uBufferAllocCI, &shaderDataBuffers[i].buffer, &shaderDataBuffers[i].allocation, &shaderDataBuffers[i].allocationInfo));
 		VkBufferDeviceAddressInfo uBufferBdaInfo{ .buffer = shaderDataBuffers[i].buffer };
 		shaderDataBuffers[i].deviceAddress = vkGetBufferDeviceAddress(device, &uBufferBdaInfo);
 	}
@@ -305,10 +302,9 @@ int main(int argc, char* argv[])
 		VmaAllocation imgSrcAllocation{};
 		VkBufferCreateInfo imgSrcBufferCI{ .size = (uint32_t)ktxTexture->dataSize, .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT };
 		VmaAllocationCreateInfo imgSrcAllocCI{ .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT, .usage = VMA_MEMORY_USAGE_AUTO };
-		chk(vmaCreateBuffer(allocator, &imgSrcBufferCI, &imgSrcAllocCI, &imgSrcBuffer, &imgSrcAllocation, nullptr));
-		void* imgSrcBufferPtr{ nullptr };
-		chk(vmaMapMemory(allocator, imgSrcAllocation, &imgSrcBufferPtr));
-		memcpy(imgSrcBufferPtr, ktxTexture->pData, ktxTexture->dataSize);
+		VmaAllocationInfo imgSrcAllocInfo{};
+		chk(vmaCreateBuffer(allocator, &imgSrcBufferCI, &imgSrcAllocCI, &imgSrcBuffer, &imgSrcAllocation, &imgSrcAllocInfo));
+		memcpy(imgSrcAllocInfo.pMappedData, ktxTexture->pData, ktxTexture->dataSize);
 		VkFenceCreateInfo fenceOneTimeCI{};
 		VkFence fenceOneTime{};
 		chk(vkCreateFence(device, &fenceOneTimeCI, nullptr, &fenceOneTime));
@@ -357,7 +353,6 @@ int main(int argc, char* argv[])
 		chk(vkQueueSubmit(queue, 1, &oneTimeSI, fenceOneTime));
 		chk(vkWaitForFences(device, 1, &fenceOneTime, VK_TRUE, UINT64_MAX));
 		vkDestroyFence(device, fenceOneTime, nullptr);
-		vmaUnmapMemory(allocator, imgSrcAllocation);
 		vmaDestroyBuffer(allocator, imgSrcBuffer, imgSrcAllocation);
 		// Sampler
 		VkSamplerCreateInfo samplerCI{
@@ -461,7 +456,7 @@ int main(int argc, char* argv[])
 			auto instancePos = glm::vec3((float)(i - 1) * 3.0f, 0.0f, 0.0f);
 			shaderData.model[i] = glm::translate(glm::mat4(1.0f), instancePos) * glm::mat4_cast(glm::quat(objectRotations[i]));
 		}
-		memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
+		memcpy(shaderDataBuffers[frameIndex].allocationInfo.pMappedData, &shaderData, sizeof(ShaderData));
 		// Build command buffer
 		auto cb = commandBuffers[frameIndex];
 		chk(vkResetCommandBuffer(cb, 0));
@@ -623,7 +618,6 @@ int main(int argc, char* argv[])
 	for (auto i = 0; i < maxFramesInFlight; i++) {
 		vkDestroyFence(device, fences[i], nullptr);
 		vkDestroySemaphore(device, presentSemaphores[i], nullptr);
-		vmaUnmapMemory(allocator, shaderDataBuffers[i].allocation);
 		vmaDestroyBuffer(allocator, shaderDataBuffers[i].buffer, shaderDataBuffers[i].allocation);
 	}
 	for (auto i = 0; i < renderSemaphores.size(); i++) {

@@ -7,7 +7,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 !!! Info
 
-	Last updated 2026-02-07: Non-uniform resource indexing
+	Last updated 2026-02-21: Persistent buffer mappings vis VMA
 
 
 ## Intro
@@ -542,11 +542,12 @@ Instead of having separate buffers for vertices and indices, we'll put both into
 Similar to creating images earlier on we use VMA to allocate the buffer for storing vertex and index data:
 
 ```cpp
-VmaAllocationCreateInfo bufferAllocCI{
+VmaAllocationCreateInfo vBufferAllocCI{
 	.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
 	.usage = VMA_MEMORY_USAGE_AUTO
 };
-chk(vmaCreateBuffer(allocator, &bufferCI, &bufferAllocCI, &vBuffer, &vBufferAllocation, nullptr));
+VmaAllocationInfo vBufferAllocInfo{};
+chk(vmaCreateBuffer(allocator, &bufferCI, &vBufferAllocCI, &vBuffer, &vBufferAllocation, &vBufferAllocInfo));
 ```
 
 We again use `VMA_MEMORY_USAGE_AUTO` to have VMA select the correct usage flags for the buffer. The specific `flags` combination of `VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT` and `VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT` used here make sure we get a memory type that's located on the GPU (in VRAM) and accessible by the host. While it's possible to store vertices and indices in CPU memory, GPU access to them will be much slower. Early on, CPU accessible VRAM memory types were only available on systems with a unified memory architecture, like mobiles or integrated GPUs. But thanks to [(Re)BAR/SAM](https://en.wikipedia.org/wiki/PCI_configuration_space#Resizable_BAR) even dedicated GPUs can now map most of their VRAM into host address space and make it accessible via the CPU.
@@ -555,14 +556,11 @@ We again use `VMA_MEMORY_USAGE_AUTO` to have VMA select the correct usage flags 
 
 	Without this we'd have to create a so-called "staging" buffer on the host, copy data to that buffer and then submit a buffer copy from staging to the GPU side buffer using a command buffer. That would require a lot more code.
 
-The `VMA_ALLOCATION_CREATE_MAPPED_BIT` flag lets us map the buffer, which in turn lets us directly copy data into VRAM:
+The `VMA_ALLOCATION_CREATE_MAPPED_BIT` gets us a persistently mapped buffer, which in turn lets us directly copy data into VRAM:
 
 ```cpp
-void* bufferPtr{ nullptr };
-chk(vmaMapMemory(allocator, vBufferAllocation, &bufferPtr));
-memcpy(bufferPtr, vertices.data(), vBufSize);
-memcpy(((char*)bufferPtr) + vBufSize, indices.data(), iBufSize);
-vmaUnmapMemory(allocator, vBufferAllocation);
+memcpy(vBufferAllocInfo.pMappedData, vertices.data(), vBufSize);
+memcpy(((char*)vBufferAllocInfo.pMappedData) + vBufSize, indices.data(), iBufSize);
 ```
 
 ## CPU and GPU parallelism
@@ -632,11 +630,10 @@ for (auto i = 0; i < maxFramesInFlight; i++) {
 		.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
 		.usage = VMA_MEMORY_USAGE_AUTO
 	};
-	chk(vmaCreateBuffer(allocator, &uBufferCI, &uBufferAllocCI, &shaderDataBuffers[i].buffer, &shaderDataBuffers[i].allocation, nullptr));
-	chk(vmaMapMemory(allocator, shaderDataBuffers[i].allocation, &shaderDataBuffers[i].mapped));
+	chk(vmaCreateBuffer(allocator, &uBufferCI, &uBufferAllocCI, &shaderDataBuffers[i].buffer, &shaderDataBuffers[i].allocation, &shaderDataBuffers[i].allocationInfo));
 ```
 
-Creating these buffers is similar to creating the vertex/index buffers for our mesh. The create info structure states that we want to access this buffer via it's device address (`VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`). The buffer size must (at least) match that of our CPU data structure. We again use VMA to handle the allocation, using the same flags as for the vertex/index buffer to make sure we get a buffer that's accessible by both the CPU and GPU. Once the buffer has been created we map it persistently. Unlike in older APIs, this is perfectly fine in Vulkan and makes it easier to update the buffers later on, as we can just keep a permanent pointer to the buffer (memory).
+Creating these buffers is similar to creating the vertex/index buffers for our mesh. The create info structure states that we want to access this buffer via it's device address (`VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT`). The buffer size must (at least) match that of our CPU data structure. We again use VMA to handle the allocation, using the same flags as for the vertex/index buffer to make sure we get a buffer that's accessible by both the CPU and GPU. Using the `VMA_ALLOCATION_CREATE_MAPPED_BIT` flag makes sure the buffer is persistently mapped and gives us a pointer to the buffer in a `VmaAllocationInfo`struct. Unlike older APIs, this is perfectly fine in Vulkan and makes it easier to update the buffers later on, as we can just keep a permanent pointer to the buffer (memory).
 
 !!! Tip
 
@@ -799,7 +796,7 @@ VmaAllocationCreateInfo imgSrcAllocCI{
 	.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT,
 	.usage = VMA_MEMORY_USAGE_AUTO
 };
-chk(vmaCreateBuffer(allocator, &imgSrcBufferCI, &imgSrcAllocCI, &imgSrcBuffer, &imgSrcAllocation, nullptr));
+chk(vmaCreateBuffer(allocator, &imgSrcBufferCI, &imgSrcAllocCI, &imgSrcBuffer, &imgSrcAllocation, &imgSrcAllocInfo));
 ```
 
 This buffer will be used as a temporary source for a buffer-to-image copy, so the only flag we need is [`VK_BUFFER_USAGE_TRANSFER_SRC_BIT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkBufferUsageFlagBits.html). The allocation is handled by VMA, once again.
@@ -807,9 +804,7 @@ This buffer will be used as a temporary source for a buffer-to-image copy, so th
 As the buffer was created with the mappable bit, getting the image data into that buffer is again just a matter of a simple `memcpy`:
 
 ```cpp
-void* imgSrcBufferPtr{ nullptr };
-chk(vmaMapMemory(allocator, imgSrcAllocation, &imgSrcBufferPtr));
-memcpy(imgSrcBufferPtr, ktxTexture->pData, ktxTexture->dataSize);
+memcpy(imgSrcAllocInfo.pMappedData, ktxTexture->pData, ktxTexture->dataSize);
 ```
 
 Next we need to copy the image data from that buffer to the optimal tiled image on the GPU. For that we have to create a command buffer. We'll get into the detail on how they work [later on](#record-command-buffer). We also create a fence that's used to wait for the command buffer to finish execution:
@@ -1393,7 +1388,7 @@ for (auto i = 0; i < 3; i++) {
 A simple `memcpy` to the shader data buffer's persistently mapped pointer is sufficient to make this available to the GPU (and with that our shader):
 
 ```cpp
-memcpy(shaderDataBuffers[frameIndex].mapped, &shaderData, sizeof(ShaderData));
+memcpy(shaderDataBuffers[frameIndex].allocationInfo.pMappedData, &shaderData, sizeof(ShaderData));
 ```
 
 This works because the [shader data buffers](#shader-data-buffers) are stored in a memory type accessible by both the CPU (for writing) and the GPU (for reading). With the preceding fence synchronization we also made sure that the CPU won't start writing to that shader data buffer before the GPU has finished reading from it.
