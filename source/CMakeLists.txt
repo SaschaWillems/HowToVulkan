@@ -14,7 +14,7 @@ else()
 endif()
 
 # SDL3, Volk, VMA, glm and Slang are taken from the SDK
-include_directories($ENV{VULKAN_SDK}/include)
+include_directories(SYSTEM $ENV{VULKAN_SDK}/include)
 # These are not part of the SDK
 include_directories(external/tinyobj)
 include_directories(external/ktx/include)
@@ -43,7 +43,9 @@ set(KTX_SOURCES
     ${KTX_DIR}/lib/vkloader.c)
 add_library(ktx STATIC ${KTX_SOURCES})
 
-if (NOT WIN32)
+if (APPLE)
+    target_link_libraries(ktx PUBLIC $ENV{VULKAN_SDK}/lib/libvulkan.dylib)
+elseif (NOT WIN32)
     target_link_libraries(ktx PUBLIC $ENV{VULKAN_SDK}/lib/libvulkan.so)
 endif()
 
