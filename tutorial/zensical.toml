@@ -249,3 +249,29 @@ link = "https://github.com/SaschaWillems/HowToVulkan"
 pygments_lang_class = true
 [project.markdown_extensions.pymdownx.superfences]
 [project.markdown_extensions.admonition]
+
+[project.extra]
+[[project.extra.alternate]]
+name = "English"
+link = "/"
+lang = "en"
+
+[[project.extra.alternate]]
+name = "中文"
+link = "/index.zh/"
+lang = "zh"
+
+[[project.extra.alternate]]
+name = "繁體中文"
+link = "/index.zh-Hant/"
+lang = "zh-Hant"
+
+[[project.extra.alternate]]
+name = "日本語"
+link = "/index.ja/"
+lang = "ja"
+
+[[project.extra.alternate]]
+name = "한국어"
+link = "/index.ko/"
+lang = "ko"
