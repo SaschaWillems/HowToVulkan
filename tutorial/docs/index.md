@@ -1436,7 +1436,7 @@ chk(vkBeginCommandBuffer(cb, &cbBI));
 
 The [`VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT`](https://docs.vulkan.org/refpages/latest/refpages/source/VkCommandBufferUsageFlagBits.html) flag affects how lifecycle moves to invalid state after execution and can be used as an optimization hint by drivers. After calling [vkBeginCommandBuffer](https://docs.vulkan.org/refpages/latest/refpages/source/vkBeginCommandBuffer.html), which moves the command buffer into recording state, we can start recording the actual commands.
 
-During rendering, color information will be written to the current [swapchain image](#swapchain), depth information will be written to the [depth image](#depth-attachment). As we learned in [loading textures](#loading-textures), optimal tiled images need to be in the correct layout for their indented use case. As such, the first step is to issue layout transitions for both of them:
+During rendering, color information will be written to the current [swapchain image](#swapchain), depth information will be written to the [depth image](#depth-attachment). As we learned in [loading textures](#loading-textures), optimal tiled images need to be in the correct layout for their intended use case. As such, the first step is to issue layout transitions for both of them:
 
 ```cpp
 std::array<VkImageMemoryBarrier2, 2> outputBarriers{
