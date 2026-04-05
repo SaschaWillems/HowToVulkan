@@ -437,7 +437,7 @@ VkImageCreateInfo depthImageCI{
 	.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 	.imageType = VK_IMAGE_TYPE_2D,
 	.format = depthFormat,
-	.extent{.width = window.getSize().x, .height = window.getSize().y, .depth = 1 },
+	.extent{.width = static_cast<uint32_t>(windowSize.x), .height = static_cast<uint32_t>(windowSize.y), .depth = 1 },
 	.mipLevels = 1,
 	.arrayLayers = 1,
 	.samples = VK_SAMPLE_COUNT_1_BIT,
@@ -1389,7 +1389,7 @@ We also pass a [semaphore](#synchronization-objects) to this function which will
 We want the next frame to use up-to-date user inputs. This is safe to do now after waiting for the fence. For that we update matrices from current data using glm:
 
 ```cpp
-shaderData.projection = glm::perspective(glm::radians(45.0f), (float)window.getSize().x / (float)window.getSize().y, 0.1f, 32.0f);
+shaderData.projection = glm::perspective(glm::radians(45.0f), (float)windowSize.x / (float)windowSize.y, 0.1f, 32.0f);
 shaderData.view = glm::translate(glm::mat4(1.0f), camPos);
 for (auto i = 0; i < 3; i++) {
 	auto instancePos = glm::vec3((float)(i - 1) * 3.0f, 0.0f, 0.0f);
@@ -1513,7 +1513,7 @@ Calling [vkCmdBeginRendering](https://docs.vulkan.org/refpages/latest/refpages/s
 ```cpp
 VkRenderingInfo renderingInfo{
 	.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-	.renderArea{.extent{.width = window.getSize().x, .height = window.getSize().y }},
+	.renderArea{.extent{.width = static_cast<uint32_t>(windowSize.x), .height = static_cast<uint32_t>(windowSize.y) }},
 	.layerCount = 1,
 	.colorAttachmentCount = 1,
 	.pColorAttachments = &colorAttachmentInfo,
@@ -1528,13 +1528,13 @@ We start by setting up the [viewport](https://docs.vulkan.org/spec/latest/chapte
 
 ```cpp
 VkViewport vp{
-    .width = static_cast<float>(window.getSize().x),
-    .height = static_cast<float>(window.getSize().y),
+    .width = static_cast<float>(windowSize.x),
+    .height = static_cast<float>(windowSize.y),
     .minDepth = 0.0f,
     .maxDepth = 1.0f
 };
 vkCmdSetViewport(cb, 0, 1, &vp);
-VkRect2D scissor{ .extent{ .width = window.getSize().x, .height = window.getSize().y } };
+VkRect2D scissor{ .extent{ .width = static_cast<uint32_t>(windowSize.x), .height = static_cast<uint32_t>(windowSize.y) } };
 vkCmdSetScissor(cb, 0, 1, &scissor);
 ```
 
@@ -1740,7 +1740,7 @@ if (updateSwapchain) {
 	vkDestroySwapchainKHR(device, swapchainCI.oldSwapchain, nullptr);
 	vmaDestroyImage(allocator, depthImage, depthImageAllocation);
 	vkDestroyImageView(device, depthImageView, nullptr);
-	depthImageCI.extent = { .width = static_cast<uint32_t>(window.getSize().x), .height = static_cast<uint32_t>(window.getSize().y), .depth = 1 };
+	depthImageCI.extent = { .width = static_cast<uint32_t>(windowSize.x), .height = static_cast<uint32_t>(windowSize.y), .depth = 1 };
 	VmaAllocationCreateInfo allocCI{
 		.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
 		.usage = VMA_MEMORY_USAGE_AUTO
