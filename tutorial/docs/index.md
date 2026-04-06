@@ -1718,7 +1718,7 @@ if (updateSwapchain) {
 	vkDeviceWaitIdle(device);
 	chk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(devices[deviceIndex], surface, &surfaceCaps));
 	swapchainCI.oldSwapchain = swapchain;
-	swapchainCI.imageExtent = { .width = static_cast<uint32_t>(resized->size.x), .height = static_cast<uint32_t>(resized->size.y) };
+	swapchainCI.imageExtent = { .width = static_cast<uint32_t>(windowSize.x), .height = static_cast<uint32_t>(windowSize.y) };
 	chk(vkCreateSwapchainKHR(device, &swapchainCI, nullptr, &swapchain));
 	for (auto i = 0; i < imageCount; i++) {
 		vkDestroyImageView(device, swapchainImageViews[i], nullptr);
