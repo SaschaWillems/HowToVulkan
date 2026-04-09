@@ -943,6 +943,7 @@ VkDescriptorSetLayoutBindingFlagsCreateInfo descBindingFlags{
 	.pBindingFlags = &descVariableFlag
 };
 VkDescriptorSetLayoutBinding descLayoutBindingTex{
+	.binding = 0,
 	.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 	.descriptorCount = static_cast<uint32_t>(textures.size()),
 	.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT
