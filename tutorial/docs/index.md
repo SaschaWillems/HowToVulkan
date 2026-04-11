@@ -868,7 +868,11 @@ for (auto j = 0; j < ktxTexture->numLevels; j++) {
 	copyRegions.push_back({
 		.bufferOffset = mipOffset,
 		.imageSubresource{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = (uint32_t)j, .layerCount = 1},
-		.imageExtent{.width = ktxTexture->baseWidth >> j, .height = ktxTexture->baseHeight >> j, .depth = 1 },
+		.imageExtent{
+			.width = std::max(1, ktxTexture->baseWidth >> j),
+			.height = std::max(1, ktxTexture->baseHeight >> j),
+			.depth = 1
+		},
 	});
 }
 vkCmdCopyBufferToImage(cbOneTime, imgSrcBuffer, textures[i].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, static_cast<uint32_t>(copyRegions.size()), copyRegions.data());
