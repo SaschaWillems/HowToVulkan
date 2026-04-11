@@ -12,6 +12,7 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <algorithm>
 #define VMA_IMPLEMENTATION
 #include <vma/vk_mem_alloc.h>
 #define GLM_FORCE_RADIANS
@@ -344,7 +345,11 @@ int main(int argc, char* argv[])
 			copyRegions.push_back({
 				.bufferOffset = mipOffset,
 				.imageSubresource{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = (uint32_t)j, .layerCount = 1},
-				.imageExtent{.width = ktxTexture->baseWidth >> j, .height = ktxTexture->baseHeight >> j, .depth = 1 },
+				.imageExtent{
+					.width = std::max(1, ktxTexture->baseWidth >> j),
+					.height = std::max(1, ktxTexture->baseHeight >> j),
+					.depth = 1
+				},
 			});
 		}
 		vkCmdCopyBufferToImage(cbOneTime, imgSrcBuffer, textures[i].image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, static_cast<uint32_t>(copyRegions.size()), copyRegions.data());
