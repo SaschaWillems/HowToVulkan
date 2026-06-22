@@ -1715,7 +1715,7 @@ The swapchain needs to be recreated when the window is resized or if its surface
 ```cpp
 if (updateSwapchain) {
 	updateSwapchain = false;
-	vkDeviceWaitIdle(device);
+	chk(vkDeviceWaitIdle(device));
 	chk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(devices[deviceIndex], surface, &surfaceCaps));
 	swapchainCI.oldSwapchain = swapchain;
 	swapchainCI.imageExtent = { .width = static_cast<uint32_t>(windowSize.x), .height = static_cast<uint32_t>(windowSize.y) };
