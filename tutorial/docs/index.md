@@ -361,7 +361,7 @@ chk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(devices[deviceIndex], surface, &su
 
 To visually present something to a surface (in our case, the window) we need to create a swapchain. It's basically a series of images, storing color information, that you enqueue to the presentation engine of the operating system. The [`VkSwapchainCreateInfoKHR`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSwapchainCreateInfoKHR.html) is pretty extensive and requires some explanation.
 
-First step is getting the correct extent of the swapchain. Usually we can get this from the surface capabilities we just queried, but on [Wayland](https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html#platformCreateSurface_wayland) this has the special value `0xFFFFFFFF`, which indicate that the surface size will basically be determined by the size of the surface:
+First step is getting the correct extent of the swapchain. Usually we can get this from the surface capabilities we just queried, but on [Wayland](https://docs.vulkan.org/spec/latest/chapters/VK_KHR_surface/wsi.html#platformCreateSurface_wayland) this has the special value `0xFFFFFFFF`, which indicate that the surface size will basically be determined by the size of the window:
 
 
 ```cpp
