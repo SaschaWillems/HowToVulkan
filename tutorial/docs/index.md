@@ -7,7 +7,7 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 !!! Info
 
-	Last updated 2026-05-30: Descriptor array clarification
+	Last updated 2026-07-16: Use vkQueueSubmit2 instead of vkQueueSubmit
 
 
 ## Intro
@@ -886,12 +886,16 @@ VkImageMemoryBarrier2 barrierTexRead{
 barrierTexInfo.pImageMemoryBarriers = &barrierTexRead;
 vkCmdPipelineBarrier2(cbOneTime, &barrierTexInfo);
 chk(vkEndCommandBuffer(cbOneTime));
-VkSubmitInfo oneTimeSI{
-	.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-	.commandBufferCount = 1,
-	.pCommandBuffers = &cbOneTime
+VkCommandBufferSubmitInfo cbOneTimeSubmitInfo{
+	.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+	.commandBuffer = cbOneTime
 };
-chk(vkQueueSubmit(queue, 1, &oneTimeSI, fenceOneTime));
+VkSubmitInfo2 oneTimeSI{
+	.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+	.commandBufferInfoCount = 1,
+	.pCommandBufferInfos = &cbOneTimeSubmitInfo
+};
+chk(vkQueueSubmit2(queue, 1, &oneTimeSI, fenceOneTime));
 chk(vkWaitForFences(device, 1, &fenceOneTime, VK_TRUE, UINT64_MAX));
 ```
 
@@ -1609,23 +1613,35 @@ This moves it to the [executable state](https://docs.vulkan.org/spec/latest/chap
 In order to execute the commands we just recorded we need to submit the command buffer to a matching queue. In a real-world application it's not uncommon to have multiple queues of different types and also more complex submission patterns. But we only use graphics commands (no compute or ray tracing) and as such also only have a single graphics queue to which we submit our current frame's command buffer:
 
 ```cpp
-VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-VkSubmitInfo submitInfo{
-	.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-	.waitSemaphoreCount = 1,
-	.pWaitSemaphores = &imageAcquiredSemaphores[frameIndex],
-	.pWaitDstStageMask = &waitStages,
-	.commandBufferCount = 1,
-	.pCommandBuffers = &cb,
-	.signalSemaphoreCount = 1,
-	.pSignalSemaphores = &renderCompleteSemaphores[imageIndex],
+VkSemaphoreSubmitInfo waitSemaphoreInfo{
+	.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+	.semaphore = imageAcquiredSemaphores[frameIndex],
+	.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 };
-chk(vkQueueSubmit(queue, 1, &submitInfo, fences[frameIndex]));
+VkCommandBufferSubmitInfo commandBufferSubmitInfo{
+	.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+	.commandBuffer = cb
+};
+VkSemaphoreSubmitInfo signalSemaphoreInfo{
+	.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+	.semaphore = renderCompleteSemaphores[imageIndex],
+	.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+};
+VkSubmitInfo2 submitInfo{
+	.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+	.waitSemaphoreInfoCount = 1,
+	.pWaitSemaphoreInfos = &waitSemaphoreInfo,
+	.commandBufferInfoCount = 1,
+	.pCommandBufferInfos = &commandBufferSubmitInfo,
+	.signalSemaphoreInfoCount = 1,
+	.pSignalSemaphoreInfos = &signalSemaphoreInfo,
+};
+chk(vkQueueSubmit2(queue, 1, &submitInfo, fences[frameIndex]));
 ```
 
-The [`VkSubmitInfo`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubmitInfo.html) structure needs some explanation, esp. in regards to synchronization. Earlier on we learned about the [synchronization primitives](#synchronization-objects) that we need to properly synchronize work between CPU and GPU and the GPU itself. And this is where it all comes together.
+The [`VkSubmitInfo2`](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubmitInfo2.html) structure needs some explanation, esp. in regards to synchronization. Earlier on we learned about the [synchronization primitives](#synchronization-objects) that we need to properly synchronize work between CPU and GPU and the GPU itself. And this is where it all comes together.
 
-The wait semaphore in `pWaitSemaphores` ensures that execution of the command buffer does not begin until the swapchain image we want to render to has been acquired. This means presentation has finished and the image has been released by the presentation engine. This is required because swapchain images are owned by the presentation engine rather than by our application. The pipeline stage specified in `pWaitDstStageMask` makes that wait happen at the color attachment output stage, so in theory the GPU may already begin work on earlier pipeline stages, such as vertex fetching. The signal semaphore in `pSignalSemaphores`, on the other hand, is signaled by the GPU once command buffer execution has completed and ensures that presentation does not begin until the command buffer has finished execution. Together, these guarantees prevent read/write hazards that could cause the GPU to read from or write to resources that are still in use.
+The wait semaphore in `pWaitSemaphoreInfos` ensures that execution of the command buffer does not begin until the swapchain image we want to render to has been acquired. This means presentation has finished and the image has been released by the presentation engine. This is required because swapchain images are owned by the presentation engine rather than by our application. The stage specified in `stageMask` makes that wait happen at the color attachment output stage, so in theory the GPU may already begin work on earlier pipeline stages, such as vertex fetching. The signal semaphore in `pSignalSemaphoreInfos`, on the other hand, is signaled by the GPU once command buffer execution has completed and ensures that presentation does not begin until the command buffer has finished execution. Together, these guarantees prevent read/write hazards that could cause the GPU to read from or write to resources that are still in use.
 
 Notice the distinction between using `frameIndex` for the image-acquired semaphore and `imageIndex` for the render-complete semaphore. This is because `vkQueuePresentKHR` (see below) cannot signal a semaphore without a certain extension, which is not yet available everywhere. To work around this, we decouple the two semaphore types and use one render-complete semaphore per swapchain image instead. An in-depth explanation can be found in the [Vulkan Guide](https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html).
 
