@@ -782,14 +782,14 @@ The format is read from the texture using `ktxTexture_GetVkFormat`, width, heigh
 We also create a view through which the image (texture) will be accessed. In our case we want to access the whole image, including all mip levels:
 
 ```cpp
-VkImageViewCreateInfo texVewCI{
+VkImageViewCreateInfo texViewCI{
 	.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 	.image = textures[i].image,
 	.viewType = VK_IMAGE_VIEW_TYPE_2D,
 	.format = texImgCI.format,
 	.subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .levelCount = ktxTexture->numLevels, .layerCount = 1 }
 };
-chk(vkCreateImageView(device, &texVewCI, nullptr, &textures[i].view));
+chk(vkCreateImageView(device, &texViewCI, nullptr, &textures[i].view));
 ```
 
 With the empty image created it's time to upload data. Unlike buffers, we can't simply memcpy data to an image. That's because [optimal tiling](https://docs.vulkan.org/refpages/latest/refpages/source/VkImageTiling.html) stores texels in a hardware-specific layout and we have no way to convert to that. Instead we have to create an intermediate buffer that we copy the data to, and then issue a command to the GPU that copies this buffer to the image, doing the conversion in turn.
