@@ -410,7 +410,19 @@ int main(int argc, char* argv[])
 	// Load shader
 	Slang::ComPtr<slang::ISession> slangSession;
 	slangGlobalSession->createSession(slangSessionDesc, slangSession.writeRef());
-	Slang::ComPtr<slang::IModule> slangModule{ slangSession->loadModuleFromSource("triangle", "assets/shader.slang", nullptr, nullptr) };
+
+	std::ifstream file{ "./assets/shader.slang" };
+
+	if (!file.is_open()) {
+		std::cerr << "failed to open file" << std::endl;
+	}
+
+	std::stringstream buffer;
+	buffer << file.rdbuf();
+	std::string shaderSource = buffer.str();
+
+	Slang::ComPtr<slang::IModule> slangModule{ slangSession->loadModuleFromSourceString("triangle", "assets/shader.slang", shaderSource.c_str()) };
+
 	Slang::ComPtr<ISlangBlob> spirv;
 	slangModule->getTargetCode(0, spirv.writeRef());
 	VkShaderModuleCreateInfo shaderModuleCI{ .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .codeSize = spirv->getBufferSize(), .pCode = (uint32_t*)spirv->getBufferPointer() };
