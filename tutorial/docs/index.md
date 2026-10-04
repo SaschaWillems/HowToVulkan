@@ -7,11 +7,11 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 !!! Info
 
-	Last updated 2026-09-01: Note on Slang shader compiler issues
+	Last updated 2026-10-04: Note on Slang shader compiler issues
 
 !!! Danger
 
-	The Slang version shipping with the LunarG Vulkan SDK 1.4.357.0 has a bug that makes shader compilation fail. If you run into this issue, please install Slang version 2026.17.1 (or newer) from [here](https://github.com/shader-slang/slang/releases) or downgrade to the previous SDK version.
+	The Slang version from the LunarG Vulkan SDK 1.4.357.0 has a bug that makes shader compilation fail. If you run into this issue, please update to SDK 1.4.363.0 or downoad Slang version 2026.17.1 (or newer) from [here](https://github.com/shader-slang/slang/releases).
 
 ## Intro
 
