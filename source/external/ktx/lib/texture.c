@@ -376,8 +376,8 @@ ktxTextureInt_constructFromStream(ktxTextureInt* This,
             if (!(createFlags & KTX_TEXTURE_CREATE_RAW_KVDATA_BIT)) {
                 result = ktxHashList_Deserialize(&super->kvDataHead,
                                                  kvdLen, pKvd);
+                free(pKvd);
                 if (result != KTX_SUCCESS) {
-                    free(pKvd);
                     return result;
                 }
             } else {
