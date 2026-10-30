@@ -13,6 +13,10 @@ else()
     message(STATUS "Found Vulkan SDK in $ENV{VULKAN_SDK}")
 endif()
 
+if(DEFINED ENV{VULKAN_SDK})
+    list(APPEND CMAKE_PREFIX_PATH "$ENV{VULKAN_SDK}")
+endif()
+
 # SDL3, Volk, VMA, glm and Slang are taken from the SDK
 include_directories(SYSTEM $ENV{VULKAN_SDK}/include)
 # These are not part of the SDK
@@ -30,6 +34,17 @@ if (NOT WIN32)
         EXCLUDE_FROM_ALL
         SYSTEM)
     FetchContent_MakeAvailable(GLM)
+
+endif()
+
+find_package(SDL3 CONFIG)
+
+if(NOT SDL3_FOUND)
+    message(STATUS "SDL3 not found, fetching")
+    FetchContent_Declare(SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL
+        GIT_TAG release-3.4.8)
+    FetchContent_MakeAvailable(SDL3)
 endif()
 
 set(KTX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/ktx)
@@ -51,7 +66,6 @@ elseif (NOT WIN32)
     target_link_libraries(ktx PUBLIC $ENV{VULKAN_SDK}/lib/libvulkan.so)
 endif()
 
-find_library(SDL_LIBRARY NAMES SDL3 HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
 find_library(Slang_LIBRARY NAMES slang slang-compiler HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
 
 if(WIN32)
@@ -72,7 +86,9 @@ if (WIN32)
 endif()
 set_target_properties(${NAME} PROPERTIES DEBUGGER_WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(${NAME} PRIVATE cxx_std_20)
-target_link_libraries(${NAME} PRIVATE ${SDL_LIBRARY} ktx ${Slang_LIBRARY})
+target_link_libraries(${NAME} PRIVATE SDL3::SDL3 ktx ${Slang_LIBRARY})
 if (NOT WIN32)
     target_link_libraries(${NAME} PRIVATE glm::glm-header-only)
 endif()
+
+add_custom_command(TARGET ${NAME} POST_BUILD COMMAND "${CMAKE_COMMAND}" -E copy $<TARGET_FILE:SDL3::SDL3-shared> $<TARGET_FILE_DIR:${NAME}> VERBATIM)

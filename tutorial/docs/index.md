@@ -7,11 +7,11 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 !!! Info
 
-	Last updated 2026-10-04: Note on Slang shader compiler issues
+	Last updated 2026-10-30: Updated CMake setup, SDL3 is fetched if not present
 
 !!! Danger
 
-	The Slang version from the LunarG Vulkan SDK 1.4.357.0 has a bug that makes shader compilation fail. If you run into this issue, please update to SDK 1.4.363.0 or downoad Slang version 2026.17.1 (or newer) from [here](https://github.com/shader-slang/slang/releases).
+	The Slang version from the LunarG Vulkan SDK 1.4.357.0 has a bug that makes shader compilation fail. If you run into this issue, please update to SDK 1.4.363.0 or download Slang version 2026.17.1 (or newer) from [here](https://github.com/shader-slang/slang/releases).
 
 ## Intro
 
@@ -70,7 +70,7 @@ Vulkan consumes shaders in an intermediate format called [SPIR-V](https://www.kh
 
 ## Vulkan SDK
 
-While it's not required for developing Vulkan applications, the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home) provides a convenient way to install commonly used libraries and tools, some of which are used in this tutorial. It's therefore recommended to install this. When installing, be sure to select the optional GLM, Volk, SDL3 and Vulkan Memory Allocator components. Alternatively, you can download these from their respective repositories and adjust the include paths in the CMakeLists.txt file.
+While it's not required for developing Vulkan applications, the [LunarG Vulkan SDK](https://vulkan.lunarg.com/sdk/home) provides a convenient way to install commonly used libraries and tools, some of which are used in this tutorial. It's therefore recommended to install this. When installing, be sure to select the optional GLM, Volk, SDL3 and Vulkan Memory Allocator components. Alternatively, you can download missing dependencies from their respective repositories and adjust the include paths in the CMakeLists.txt file.
 
 ## Validation layers
 
